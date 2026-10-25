@@ -1,4 +1,4 @@
-name: Torneo y scoreboard
+name: Web (GitHub Pages) y scoreboard
 
 on:
   push:
@@ -24,6 +24,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install -e .
+      - run: python scripts/build_web.py --out site
       - run: musst-arena --games 10 --seed 2026 --out site/scoreboard
       - run: cat site/scoreboard/scoreboard.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-pages-artifact@v3

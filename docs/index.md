@@ -77,15 +77,17 @@ config/         reglas y parámetros de agentes
 | [Agentes](agents.md) | Niveles, agentes, selección adversa, DecisionExplanation |
 | [PlayerModel](player-model.md) | Qué aprende, cómo, memoria, cambios de estrategia |
 | [Testing y experimentos](testing.md) | Pirámide de tests, privacidad, resultados medidos |
-| [Despliegue](deployment.md) | Local, Render/HF Spaces, ReadTheDocs, GitHub Pages |
+| [Despliegue](deployment.md) | GitHub Pages con Pyodide, local, ReadTheDocs |
 | [Decisiones (ADR)](adr/index.md) | Por qué cada decisión, alternativas y limitaciones |
 | [Diseño de la Fase 0](design/00-indice.md) | Requisitos, arquitectura y **preguntas para el profesor** |
 
-## Pendiente de validar con el profesor
+## Validado por el profesor
 
-La práctica pide un juego **de 2 jugadores**; el Mus FEM es de **4 jugadores en 2 parejas**.
-No se ha modificado el juego: la propuesta (la pareja como unidad competitiva del torneo) y
-el resto de preguntas están en [docs/design/11-preguntas-profesor.md](design/11-preguntas-profesor.md).
+- Se permite el **Mus FEM de 4 jugadores en 2 parejas**; no se ha modificado el juego.
+- **Dificultad 5** (cada victoria de un bot en la Sección 3 vale 0.5 × 5 = 2.5).
+- La web se publica en **GitHub Pages** con Python en el navegador (Pyodide).
+
+El resto de preguntas abiertas están en [preguntas al profesor](design/11-preguntas-profesor.md).
 
 ## Flujo de trabajo
 

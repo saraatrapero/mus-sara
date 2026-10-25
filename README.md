@@ -8,6 +8,8 @@ torneo automático de bots.
 
 Práctica de **Inteligencia Artificial — 3º MAT-A, CUNEF Universidad, 2026/2027**.
 
+**Jugar online:** https://saraatrapero.github.io/mus-sara/ (Python ejecutándose en tu navegador con Pyodide)
+
 [![CI](https://github.com/saraatrapero/mus-sara/actions/workflows/ci.yml/badge.svg)](https://github.com/saraatrapero/mus-sara/actions/workflows/ci.yml)
 
 | Jugar | Aprender | Competir | Analizar |
@@ -20,10 +22,11 @@ Práctica de **Inteligencia Artificial — 3º MAT-A, CUNEF Universidad, 2026/20
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-pytest                                   # 150 tests
+pytest                                   # 156 tests
 musst-play --bots sencillo profesional   # una partida sin interfaz
 musst-arena --games 5                    # torneo entre todos los bots
-MUSST_SECURE_COOKIES=0 uvicorn musst.server.app:app --reload   # web en http://localhost:8000
+MUSST_SECURE_COOKIES=0 uvicorn musst.server.app:app --reload   # web con servidor: http://localhost:8000
+python scripts/build_web.py --out site && python -m http.server -d site 8001   # web sin servidor (Pyodide)
 ```
 
 Partida completa desde código (Req 1.1):
@@ -60,7 +63,8 @@ src/musst/
   analytics/    estadísticas, momentos clave, contrafactuales post-partida
   arena/        torneo (mus duplicado) y scoreboard
   persistence/  SQLite detrás de un repositorio; contraseñas con scrypt
-  server/       API FastAPI + frontend estático (HTML/CSS/JS)
+  server/       casos de uso (service.py) + API FastAPI + frontend estático (HTML/CSS/JS)
+  web/          backend que corre en el navegador (Pyodide) para GitHub Pages
 bots/           bots externos (uno por carpeta, vía Pull Request)
 experiments/    experimentos reproducibles (escalera de niveles, adaptación)
 tests/          unit · property · privacy · integration · bot_conformance
@@ -78,15 +82,17 @@ config/         reglas y parámetros de agentes
 | [Agentes](docs/agents.md) | Niveles, agentes, selección adversa, DecisionExplanation |
 | [PlayerModel](docs/player-model.md) | Qué aprende, cómo, memoria, cambios de estrategia |
 | [Testing y experimentos](docs/testing.md) | Pirámide de tests, privacidad, resultados medidos |
-| [Despliegue](docs/deployment.md) | Local, Render/HF Spaces, ReadTheDocs, GitHub Pages |
+| [Despliegue](docs/deployment.md) | GitHub Pages con Pyodide, local, ReadTheDocs |
 | [Decisiones (ADR)](docs/adr/index.md) | Por qué cada decisión, alternativas y limitaciones |
 | [Diseño de la Fase 0](docs/design/00-indice.md) | Requisitos, arquitectura y **preguntas para el profesor** |
 
-## Pendiente de validar con el profesor
+## Validado por el profesor
 
-La práctica pide un juego **de 2 jugadores**; el Mus FEM es de **4 jugadores en 2 parejas**.
-No se ha modificado el juego: la propuesta (la pareja como unidad competitiva del torneo) y
-el resto de preguntas están en [docs/design/11-preguntas-profesor.md](docs/design/11-preguntas-profesor.md).
+- Se permite el **Mus FEM de 4 jugadores en 2 parejas**; no se ha modificado el juego.
+- **Dificultad 5** (cada victoria de un bot en la Sección 3 vale 0.5 × 5 = 2.5).
+- La web se publica en **GitHub Pages** con Python en el navegador (Pyodide).
+
+El resto de preguntas abiertas están en [preguntas al profesor](docs/design/11-preguntas-profesor.md).
 
 ## Flujo de trabajo
 

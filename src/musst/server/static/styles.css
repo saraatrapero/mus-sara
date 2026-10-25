@@ -246,3 +246,11 @@ dialog::backdrop { background: rgb(10 14 12 / .55); }
 
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 :root[data-motion="reduce"] * { animation: none !important; transition: none !important; }
+
+/* Pantalla de carga de la versión web (Pyodide) */
+.booting {
+  position: fixed; inset: 0; z-index: 50; display: grid; place-content: center; justify-items: center; gap: .75rem;
+  background: var(--bg); color: var(--fg); text-align: center; padding: 16px;
+}
+.booting p { margin: 0; font-weight: 600; }
+.booting small { color: var(--muted); max-width: 32ch; }

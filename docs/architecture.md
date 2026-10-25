@@ -9,8 +9,10 @@ describe lo **implementado** y dónde está cada pieza.
             NAVEGADOR (src/musst/server/static: HTML + CSS + JS sin dependencias)
                  │  Observation (JSON)          ▲  Action (JSON) + X-Seat-Token
                  ▼                              │
-            SERVIDOR (src/musst/server: FastAPI)
-            auth · validación Pydantic · SessionManager · coach · modo dev (solo local)
+            SERVIDOR (src/musst/server: FastAPI)    o    NAVEGADOR (src/musst/web: Pyodide en un Web Worker)
+            auth · Pydantic · modo dev (solo local)      perfil local · SQLite sobre IndexedDB
+                 └──────────────── MusService (server/service.py): casos de uso comunes ──┘
+                                   SessionManager · coach
                  │
                  ▼
             RUNTIME (src/musst/runtime/runner.py)  ── torneo (src/musst/arena)

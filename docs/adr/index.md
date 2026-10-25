@@ -74,3 +74,27 @@ limitaciones y cómo se ha probado.
 - **Problema**: el azar del reparto domina pocas partidas.
 - **Decisión**: cada seed se juega dos veces intercambiando las parejas de asiento.
 - **Pruebas**: `tests/integration/test_arena.py` (reproducibilidad y bot roto).
+
+## ADR-011 · Web en GitHub Pages con Python en el navegador (Pyodide)
+
+- **Problema**: la web debe publicarse en GitHub Pages, que solo sirve ficheros estáticos.
+- **Decisión**: el frontend habla con el mismo `/api/...`, pero en Pages las peticiones las
+  atiende `musst.web.backend` dentro de un **Web Worker** con **Pyodide**. La lógica de la API
+  se movió a `musst.server.service.MusService`, que usan tanto FastAPI como el navegador: no hay
+  dos implementaciones. Los datos (perfil, partidas, estadísticas, modelo del jugador) se guardan
+  en SQLite sobre IndexedDB.
+- **Alternativas**: servidor en Render/HF Spaces (arranque en frío, cuentas externas);
+  reescribir el motor en JavaScript (dos motores que mantener).
+- **Ventajas**: gratis, sin servidor, el mismo código Python y las mismas pruebas; los bots
+  piensan en un worker y la mesa no se congela.
+- **Limitaciones (aceptadas)**:
+    - Las cartas de los bots están en la memoria del navegador del jugador. El frontend sigue
+      recibiendo solo la observación de su asiento, pero alguien con conocimientos podría leerlas.
+      Solo se engaña a sí mismo: no hay ranking de humanos en esta versión.
+    - Perfil local sin contraseña; los datos no salen del navegador.
+    - Sin compañero humano por invitación ni bots externos en subproceso (requieren servidor).
+      El torneo con todos los bots se ejecuta en GitHub Actions y se publica en `scoreboard/`.
+    - Primera carga: unos 10 MB de Pyodide desde jsDelivr (después, caché).
+- **Pruebas**: `tests/integration/test_web_backend.py`; el job `web` del CI genera el sitio y
+  comprueba que el paquete funciona sin FastAPI; prueba manual en Chrome (partida completa,
+  perfil y estadísticas tras recargar).

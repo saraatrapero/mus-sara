@@ -154,6 +154,26 @@ class Repository:
             assert cur.lastrowid is not None
             return User(cur.lastrowid, username, avatar, {})
 
+    def get_or_create_local_user(self, username: str) -> User:
+        """Perfil sin contraseña para la versión que se ejecuta en el navegador.
+
+        El hash ``!local`` no corresponde a ninguna contraseña, así que este usuario nunca
+        puede iniciar sesión en un servidor.
+        """
+        with self.conn() as c:
+            row = c.execute(
+                "SELECT id, username, avatar, settings_json FROM users WHERE username = ?",
+                (username,),
+            ).fetchone()
+            if row is not None:
+                return User(row[0], row[1], row[2], json.loads(row[3]))
+            cur = c.execute(
+                "INSERT INTO users (username, password_hash, created_at) VALUES (?, '!local', ?)",
+                (username, time.time()),
+            )
+            assert cur.lastrowid is not None
+            return User(cur.lastrowid, username, None, {})
+
     def authenticate(self, username: str, password: str) -> User | None:
         with self.conn() as c:
             row = c.execute(

@@ -2,7 +2,22 @@
 
 Preguntas que debe validar el profesor (Javier Paris) **antes de empezar la Fase 2**.
 
-## P1 — CONFLICTO: el Mus se juega con 4 jugadores en 2 parejas ⚠️
+| Pregunta | Estado |
+|---|---|
+| P1 — 4 jugadores | ✅ **Resuelta**: se permite el Mus de 4 jugadores |
+| P3 — Dificultad | ✅ **Resuelta**: dificultad **5** |
+| P10 a — Infraestructura | ✅ **Resuelta**: la web se publica en GitHub Pages con Python en el navegador (Pyodide) |
+| Resto | Pendientes |
+
+## P1 — CONFLICTO: el Mus se juega con 4 jugadores en 2 parejas ✅ resuelta
+
+> **Respuesta del profesor (correo, 2026):** *"tenéis permitido el uso del juego del MUS para
+> 4 jugadores para la práctica de programación de la asignatura. […] el hecho de tener 4
+> jugadores va a complicar altamente el diseño y generación de una estrategia buena para el
+> juego. Sabiendo esto, si preferís mantener ese juego, me parece bien."*
+>
+> **Decisión:** se mantiene el Mus FEM de 4 jugadores en 2 parejas (opción A), sin cambios en
+> el motor.
 
 **Hecho.** La práctica dice: *"Cada equipo elegirá un juego de 2 jugadores"* (§3) y *"Como
 condición previa, el juego elegido debe ser un juego por turnos de 2 jugadores y debe estar
@@ -26,7 +41,10 @@ El Req 1.2 pide "una persona juega una partida completa contra un bot". ¿Cumple
 con "humano + bot compañero contra pareja de bots"? En el MVP el compañero del humano será un
 bot (dos humanos en la misma pareja requieren dos dispositivos, Riesgo R3).
 
-## P3 — Dificultad del Mus para la Sección 3
+## P3 — Dificultad del Mus para la Sección 3 ✅ resuelta
+
+> **Respuesta del profesor:** *"La dificultad del MUS para 4 jugadores será de 5."* Con la
+> puntuación de bots de 0.5 × dificultad, cada victoria vale **2.5**.
 
 El Mus no aparece en la tabla de dificultades y la puntuación de bots es 0.5 × dificultad.
 ¿Qué dificultad se le asigna? (Tiene información oculta, azar, 4 jugadores, envites y faroles.)
@@ -68,7 +86,11 @@ preparadas (`SignalSystem`) y desactivadas en v1.
 
 ## P10 — Infraestructura
 
-a) ¿Es válido un backend FastAPI en un hosting gratuito (Render / HF Spaces) además de GitHub
-Pages? Es necesario para no exponer las cartas de los bots en el navegador.
+a) ✅ **Resuelta**: la web se publica en **GitHub Pages** y Python se ejecuta en el navegador
+con **Pyodide** (ADR-011). El servidor FastAPI sigue disponible para uso local, invitaciones y
+el torneo. Contrapartida aceptada: en el navegador las cartas de los bots están en la memoria
+del propio jugador (ver ADR-011).
+~~¿Es válido un backend FastAPI en un hosting gratuito (Render / HF Spaces) además de GitHub
+Pages?~~
 b) Los bots de otros equipos (Req 3.3): ¿se espera que respeten nuestro protocolo de sandbox
 (subproceso + JSON), o basta con heredar de `Bot`?

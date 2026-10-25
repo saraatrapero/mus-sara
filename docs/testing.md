@@ -1,7 +1,7 @@
 # Testing y experimentos
 
 ```bash
-pytest                         # 150 tests
+pytest                         # 156 tests
 pytest --cov=musst             # cobertura (88 % global; motor 93-100 %)
 pytest tests/privacy           # solo fugas de información
 pytest tests/bot_conformance   # conformidad de todos los bots registrados
@@ -14,7 +14,7 @@ pytest tests/bot_conformance   # conformidad de todos los bots registrados
 | `tests/unit` | Baraja, evaluación de manos, mus y descartes, envites y órdagos, tanteo, acciones, máquina de estados, PlayerModel, análisis, señas, CLI |
 | `tests/property` | Invariantes con *hypothesis*: 40 cartas siempre, marcador creciente, toda acción ejecutada es legal, la partida termina, misma seed ⇒ mismo log |
 | `tests/privacy` | Ninguna observación contiene cartas ajenas ni del mazo; observaciones idénticas si solo cambian cartas ocultas; espectador sin manos; eventos de sistema invisibles |
-| `tests/integration` | Partidas completas con cada bot; bots que fallan (excepción, ilegal, basura, timeout) pierden sin romper; sandbox en subproceso; torneo; API web completa |
+| `tests/integration` | Partidas completas con cada bot; bots que fallan (excepción, ilegal, basura, timeout) pierden sin romper; sandbox en subproceso; torneo; API web completa; backend del navegador (Pyodide) |
 | `tests/bot_conformance` | Se parametriza con **todos** los bots registrados (internos y `bots/*`) |
 
 ### Escenarios controlados ("baraja amañada")

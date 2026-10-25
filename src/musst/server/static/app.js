@@ -1,5 +1,7 @@
 // MUS.ST — frontend sin dependencias. Solo renderiza observaciones y envía intenciones.
-// La legalidad la decide siempre el servidor (RulesEngine); aquí solo se ocultan botones.
+// La legalidad la decide siempre el motor (RulesEngine); aquí solo se ocultan botones.
+// Dos backends con la misma API: el servidor FastAPI o, en GitHub Pages, el mismo Python
+// ejecutándose en este navegador con Pyodide (worker.js). Lo decide <meta name="musst-backend">.
 
 const $main = document.getElementById("main");
 const $live = document.getElementById("live");
@@ -60,7 +62,43 @@ function play(name) {
 }
 
 // ------------------------------------------------------------------ utilidades
+const LOCAL = document.querySelector('meta[name="musst-backend"]')?.content === "pyodide";
+let worker = null;
+let workerReady = null;
+const pending = new Map();
+function startWorker() {
+  if (workerReady) return workerReady;
+  worker = new Worker(new URL("worker.js", import.meta.url));
+  const $boot = document.getElementById("booting");
+  workerReady = new Promise((resolve, reject) => {
+    worker.onmessage = ({ data }) => {
+      if (data.type === "progress") { if ($boot) $boot.querySelector("p").textContent = data.text; return; }
+      if (data.type === "ready") { $boot?.remove(); resolve(); return; }
+      if (data.type === "fatal") {
+        if ($boot) $boot.querySelector("p").textContent = `No se pudo cargar el motor: ${data.text}`;
+        reject(new Error(data.text));
+        return;
+      }
+      const p = pending.get(data.id);
+      if (p) { pending.delete(data.id); p(data); }
+    };
+  });
+  return workerReady;
+}
+let nextId = 0;
+async function localApi(path, method, body, token) {
+  await startWorker();
+  const id = ++nextId;
+  const reply = await new Promise((resolve) => {
+    pending.set(id, resolve);
+    worker.postMessage({ id, method, path, body: body ? JSON.stringify(body) : null, token: token || null });
+  });
+  if (reply.status >= 400) throw new Error(typeof reply.data?.detail === "string" ? reply.data.detail : "Error del motor");
+  return reply.data;
+}
+
 async function api(path, { method = "GET", body, token } = {}) {
+  if (LOCAL) return localApi(path, method, body, token);
   const headers = { "Content-Type": "application/json" };
   if (token) headers["X-Seat-Token"] = token;
   const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined, credentials: "same-origin" });
@@ -182,7 +220,7 @@ function home() {
         <form id="custom" class="stack">
           <div class="form-grid">
             <label class="field">Rivales<select name="rivals"><option value="sencillo">Sencillo</option><option value="medio" selected>Medio</option><option value="profesional">Profesional</option></select></label>
-            <label class="field">Compañero<select name="partner"><option value="sencillo">Bot sencillo</option><option value="medio">Bot medio</option><option value="profesional">Bot profesional</option><option value="human">Humano (invitación)</option></select></label>
+            <label class="field">Compañero<select name="partner"><option value="sencillo">Bot sencillo</option><option value="medio">Bot medio</option><option value="profesional">Bot profesional</option>${LOCAL ? "" : '<option value="human">Humano (invitación)</option>'}</select></label>
             <label class="field">Tantos<select name="target"><option>40</option><option>30</option><option>20</option><option>60</option></select></label>
             <label class="field">Tu nombre<input name="name" maxlength="24" value="Tú"></label>
             <label class="field">Nombre rival 1<input name="n1" maxlength="24" placeholder="Bot 1"></label>
@@ -324,7 +362,7 @@ function renderGame(bubbles = {}) {
       <div><div class="lances" aria-label="Lances">${lanceBar}</div><small class="muted">Jugada ${obs.round} · a ${obs.target} tantos · ${current.obs.mode}</small></div>
       <div class="scores">${scoreLine(myTeam)}${scoreLine(1 - myTeam)}</div>
     </div>
-    ${obs.invite ? `<div class="invite">Invita a tu compañero: comparte este enlace <code>${location.origin}/#join/${obs.game_id}/${obs.invite}</code></div>` : ""}
+    ${obs.invite ? `<div class="invite">Invita a tu compañero: comparte este enlace <code>${location.origin}${location.pathname}#join/${obs.game_id}/${obs.invite}</code></div>` : ""}
     <div class="table" role="region" aria-label="Mesa de Mus">
       ${obs.seats.filter((s) => s.seat !== me).map(seatHTML).join("")}
       <div class="center"><div><div class="lance-title">${esc(phaseName)}</div><div class="bet-info">${esc(betInfo)}</div>
@@ -750,9 +788,11 @@ function loginDialog() {
   openModal(`<h2 id="modal-title">Entrar</h2>
     <form id="lf" class="stack">
       <label class="field">Usuario<input name="username" autocomplete="username" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_.\\-]+"></label>
-      <label class="field">Contraseña<input name="password" type="password" autocomplete="current-password" required minlength="8"></label>
+      ${LOCAL ? `<p class="muted">Perfil local: tus partidas, estadísticas y lo que el bot aprende de ti se guardan solo en este navegador. No hace falta contraseña.</p>
+      <div class="row"><button class="btn primary" value="login">Usar este perfil</button><button class="btn ghost" type="button" data-close>Cancelar</button></div>`
+      : `<label class="field">Contraseña<input name="password" type="password" autocomplete="current-password" required minlength="8"></label>
       <p class="muted">Solo guardamos tu usuario y un hash de la contraseña. Nada más.</p>
-      <div class="row"><button class="btn primary" value="login">Entrar</button><button class="btn" value="register">Crear cuenta</button><button class="btn ghost" type="button" data-close>Cancelar</button></div>
+      <div class="row"><button class="btn primary" value="login">Entrar</button><button class="btn" value="register">Crear cuenta</button><button class="btn ghost" type="button" data-close>Cancelar</button></div>`}
     </form>`);
   document.getElementById("lf").onsubmit = async (e) => {
     e.preventDefault();
@@ -762,7 +802,7 @@ function loginDialog() {
       await api(`/api/auth/${kind}`, { method: "POST", body: { username: f.get("username"), password: f.get("password") } });
       $modal.close();
       await loadUser();
-      toast(kind === "register" ? "Cuenta creada" : "Bienvenido/a");
+      toast(kind === "register" ? "Cuenta creada" : `Hola, ${user ? user.username : ""}`);
       go("home");
     } catch (err) { toast(err.message); }
   };
@@ -783,6 +823,9 @@ async function loadUser() {
 // ------------------------------------------------------------------ arranque
 async function boot() {
   applySettings();
+  if (LOCAL) {
+    try { await startWorker(); } catch { return; }
+  }
   await loadUser();
   const join = location.hash.match(/^#join\/([\w-]+)\/([\w-]+)/);
   if (join) {
@@ -790,7 +833,7 @@ async function boot() {
     try {
       const data = await api(`/api/games/${join[1]}/join`, { method: "POST", body: { invite: join[2], name } });
       current = { id: data.game_id, token: data.seat_token, obs: data.observation, seen: maxSeq(data.observation), help: false, discard: new Set(), amount: 2, busy: false };
-      history.replaceState(null, "", "/");
+      history.replaceState(null, "", location.pathname);
       go("game");
       return;
     } catch (err) { toast(err.message); }

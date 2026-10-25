@@ -41,3 +41,25 @@ jobs:
       - run: pip install build
       - run: python -m build
       - run: pip install dist/*.whl && python -c "from musst import play_game; from musst.bots.builtin import SimpleBot; print(play_game([SimpleBot(i) for i in range(4)], seed=1).result)"
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e ".[dev]"
+      - run: python scripts/build_web.py --out site
+      # El paquete del navegador no debe depender de FastAPI ni de procesos
+      - run: |
+          cd site/static && python - <<'PY'
+          import sys, zipfile
+          zipfile.ZipFile("musst.zip").extractall("/tmp/pyodide-lib")
+          sys.path.insert(0, "/tmp/pyodide-lib")
+          sys.modules["fastapi"] = None
+          from musst.web.backend import LocalBackend
+          b = LocalBackend(None)
+          status, data = b.handle("POST", "/api/games", {"seed": 1}, None)
+          assert status == 200, data
+          print("backend del navegador OK")
+          PY
