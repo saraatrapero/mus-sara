@@ -200,20 +200,21 @@ class GameState:
     score: dict[TeamId, int]
     dealer: Seat
     phase: Phase
-    round: RoundState | None        # jugada en curso
-    rng_state: RngState             # para reproducibilidad
+    round: RoundState | None  # jugada en curso
+    rng_state: RngState  # para reproducibilidad
     status: GameStatus
+
 
 @dataclass(frozen=True)
 class RoundState:
-    hands: tuple[Hand, Hand, Hand, Hand]     # ← SECRETO
-    deck: tuple[Card, ...]                   # ← SECRETO
-    discard_pile: tuple[Card, ...]           # ← SECRETO
+    hands: tuple[Hand, Hand, Hand, Hand]  # ← SECRETO
+    deck: tuple[Card, ...]  # ← SECRETO
+    discard_pile: tuple[Card, ...]  # ← SECRETO
     mus_rounds: int
     turn: Seat | None
-    lances: dict[Lance, LanceState]          # apuestas, resultado pendiente
-    declarations: dict[Lance, dict[Seat, bool]]   # pares sí/no, juego sí/no (público)
-    pending_points: list[PendingPoints]           # se tantea al final (FEM VI.6)
+    lances: dict[Lance, LanceState]  # apuestas, resultado pendiente
+    declarations: dict[Lance, dict[Seat, bool]]  # pares sí/no, juego sí/no (público)
+    pending_points: list[PendingPoints]  # se tantea al final (FEM VI.6)
 ```
 
 ### 3.3 Interfaz pública del motor
@@ -221,9 +222,11 @@ class RoundState:
 ```python
 class GameEngine:
     def new_game(self, config: RulesConfig, seed: int) -> tuple[GameState, list[GameEvent]]: ...
-    def apply(self, state: GameState, seat: Seat, action: Action
-              ) -> tuple[GameState, list[GameEvent]]:
+    def apply(
+        self, state: GameState, seat: Seat, action: Action
+    ) -> tuple[GameState, list[GameEvent]]:
         """Valida con RulesEngine; si es ilegal, lanza IllegalAction y no cambia nada."""
+
 
 class RulesEngine:
     def legal_actions(self, state: GameState, seat: Seat) -> list[ActionTemplate]: ...

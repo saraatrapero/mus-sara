@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import copy
 import random
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -320,14 +319,13 @@ class MusGame:
         if reason is not None:
             raise IllegalAction(reason)
         start = len(self.events)
-        handler: Callable[[int, Any], None]
-        if self.phase is Phase.MUS:
-            handler = self._on_mus
-        elif self.phase is Phase.DISCARD:
-            handler = self._on_discard
+        # validate() garantiza que el tipo de acción corresponde a la fase.
+        if isinstance(action, MusAction | CutMusAction):
+            self._on_mus(seat, action)
+        elif isinstance(action, DiscardAction):
+            self._on_discard(seat, action)
         else:
-            handler = self._on_lance_action
-        handler(seat, action)
+            self._on_lance_action(seat, action)
         return self.events[start:]
 
     # --- mus

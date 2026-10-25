@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>MUS.ST — El Mus que aprende cómo juegas</title>
+  <meta name="description" content="Plataforma de Mus (Reglamento FEM) con bots que aprenden cómo juegas.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231f4d3a'/%3E%3Ctext x='16' y='22' font-size='16' text-anchor='middle' fill='%23f3ead7' font-family='Georgia'%3EM%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Saltar al contenido</a>
+  <header class="topbar">
+    <button class="brand" data-nav="home" aria-label="MUS.ST, inicio">
+      <span class="brand-mark" aria-hidden="true">M</span>
+      <span class="brand-text"><strong>MUS.ST</strong><small>El Mus que aprende cómo juegas</small></span>
+    </button>
+    <nav class="topnav" aria-label="Principal">
+      <button data-nav="home">Jugar</button>
+      <button data-nav="learn">Aprender</button>
+      <button data-nav="arena">Competir</button>
+      <button data-nav="stats">Analizar</button>
+    </nav>
+    <div class="top-actions">
+      <button id="mute" class="icon-btn" aria-pressed="false" title="Silenciar todo" aria-label="Silenciar todo">🔊</button>
+      <button data-nav="settings" class="icon-btn" title="Ajustes" aria-label="Ajustes">⚙</button>
+      <button id="account" class="pill">Entrar</button>
+    </div>
+  </header>
+  <main id="main" tabindex="-1"></main>
+  <div id="live" class="sr-only" aria-live="polite"></div>
+  <dialog id="modal" aria-labelledby="modal-title"><div id="modal-body"></div></dialog>
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>

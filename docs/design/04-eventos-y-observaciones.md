@@ -16,14 +16,14 @@ Cada `GameEngine.apply` devuelve una lista de **eventos inmutables**. Una partid
 @dataclass(frozen=True)
 class GameEvent:
     game_id: UUID
-    seq: int                       # orden total dentro de la partida
+    seq: int  # orden total dentro de la partida
     timestamp: datetime
     round_no: int
-    phase: Phase                   # lance / fase en la que ocurre
-    actor: Seat | None             # None para eventos del sistema
+    phase: Phase  # lance / fase en la que ocurre
+    actor: Seat | None  # None para eventos del sistema
     kind: EventKind
     payload: Mapping[str, Any]
-    visibility: Visibility         # PUBLIC | PRIVATE(seats) | SYSTEM
+    visibility: Visibility  # PUBLIC | PRIVATE(seats) | SYSTEM
 ```
 
 | Visibilidad | Quién lo ve | Ejemplos |
@@ -91,20 +91,20 @@ class Observation:
     me: Seat
     partner: Seat
     my_team: TeamId
-    my_hand: tuple[Card, ...]               # SOLO mis cartas
+    my_hand: tuple[Card, ...]  # SOLO mis cartas
     phase: Phase
     current_lance: Lance | None
-    lance_hand: Seat | None                 # mano del lance
+    lance_hand: Seat | None  # mano del lance
     dealer: Seat
     turn: Seat | None
     score: dict[TeamId, int]
     target: int
     declarations: dict[Lance, dict[Seat, bool]]
-    current_bet: BetView | None             # apuesta vigente y quién debe responder
-    lance_history: tuple[PublicAction, ...] # acciones públicas de esta jugada
+    current_bet: BetView | None  # apuesta vigente y quién debe responder
+    lance_history: tuple[PublicAction, ...]  # acciones públicas de esta jugada
     public_events: tuple[PublicEventView, ...]  # historial público de la partida
     revealed_hands: dict[Seat, tuple[Card, ...]] | None  # solo tras SHOWDOWN / órdago
-    cards_in_deck: int                      # número público (no las cartas)
+    cards_in_deck: int  # número público (no las cartas)
     legal_actions: tuple[ActionTemplate, ...]
     time_limit_ms: int
 ```
