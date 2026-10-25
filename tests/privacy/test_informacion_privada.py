@@ -19,11 +19,15 @@ def random_play(seed: int, steps: int = 400):
 
 
 def hidden_codes(game: MusGame, seat: int) -> set[str]:
-    return {c.code for s in range(4) if s != seat for c in game.hands[s]} | {c.code for c in game.deck}
+    return {c.code for s in range(4) if s != seat for c in game.hands[s]} | {
+        c.code for c in game.deck
+    }
 
 
 def revealed_this_round(game: MusGame) -> bool:
-    return any(e.kind is EventKind.HANDS_REVEALED and e.round_no == game.round_no for e in game.events)
+    return any(
+        e.kind is EventKind.HANDS_REVEALED and e.round_no == game.round_no for e in game.events
+    )
 
 
 def test_ninguna_observacion_contiene_cartas_ajenas_ni_del_mazo():

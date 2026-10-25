@@ -36,7 +36,11 @@ class SlowBot(Bot):
 
     def decide(self, observation: Observation) -> Action:
         time.sleep(0.05)
-        return observation.legal_actions[0].default() if observation.legal_actions[0].type != "discard" else RandomBot(1).decide(observation)
+        return (
+            observation.legal_actions[0].default()
+            if observation.legal_actions[0].type != "discard"
+            else RandomBot(1).decide(observation)
+        )
 
 
 @pytest.mark.parametrize("cls", [RandomBot, SimpleBot, MediumBot, ProBot])
@@ -56,7 +60,10 @@ def test_en_torneo_el_bot_que_falla_pierde(bad):
 
 def test_timeout_en_torneo():
     match = play_game(
-        [SlowBot(), SimpleBot(2), SimpleBot(3), SimpleBot(4)], seed=1, mode="tournament", time_limit_s=0.01
+        [SlowBot(), SimpleBot(2), SimpleBot(3), SimpleBot(4)],
+        seed=1,
+        mode="tournament",
+        time_limit_s=0.01,
     )
     assert match.result.winner == 1
     assert match.errors[0].kind == "timeout"

@@ -4,7 +4,15 @@ import random
 
 import pytest
 
-from musst.engine.cards import RANKS, Card, Suit, full_deck, normalized_rank, point_value, shuffled_deck
+from musst.engine.cards import (
+    RANKS,
+    Card,
+    Suit,
+    full_deck,
+    normalized_rank,
+    point_value,
+    shuffled_deck,
+)
 
 
 def test_baraja_espanola_de_40_naipes_unicos():

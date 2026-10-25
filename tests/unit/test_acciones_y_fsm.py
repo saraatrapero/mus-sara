@@ -19,7 +19,12 @@ from musst.engine.game import ALLOWED_TRANSITIONS, IllegalTransition, Phase
 
 @pytest.mark.parametrize(
     "action",
-    [MusAction(), BetAction(5), OrdagoAction(), DiscardAction((Card.parse("12O"), Card.parse("1C")))],
+    [
+        MusAction(),
+        BetAction(5),
+        OrdagoAction(),
+        DiscardAction((Card.parse("12O"), Card.parse("1C"))),
+    ],
 )
 def test_serializacion_ida_y_vuelta(action):
     assert action_from_dict(action_to_dict(action)) == action
@@ -27,7 +32,14 @@ def test_serializacion_ida_y_vuelta(action):
 
 @pytest.mark.parametrize(
     "data",
-    [{}, {"type": "volar"}, {"type": "bet"}, {"type": "bet", "amount": "2"}, {"type": "discard", "cards": "12O"}, 5],
+    [
+        {},
+        {"type": "volar"},
+        {"type": "bet"},
+        {"type": "bet", "amount": "2"},
+        {"type": "discard", "cards": "12O"},
+        5,
+    ],
 )
 def test_acciones_malformadas(data):
     with pytest.raises(ValueError):

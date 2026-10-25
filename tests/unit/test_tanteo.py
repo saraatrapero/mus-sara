@@ -69,7 +69,9 @@ def test_gana_quien_llega_primero_contando_en_orden_de_lances():
 
 
 def test_negada_en_el_acto_puede_terminar_el_juego():
-    game = rigged_game({0: "4O 5C 6E 7B", 1: "4C 5E 6B 7O", 2: "4E 5B 6O 7C", 3: "4B 5O 6C 7E"}, score=(39, 0))
+    game = rigged_game(
+        {0: "4O 5C 6E 7B", 1: "4C 5E 6B 7O", 2: "4E 5B 6O 7C", 3: "4B 5O 6C 7E"}, score=(39, 0)
+    )
     act(game, BetAction(2), RejectAction(), RejectAction())
     assert game.finished and game.result.winner == 0
 
@@ -87,13 +89,17 @@ def test_negada_no_termina_si_se_configura():
 
 
 def test_estamos_dentro():
-    game = rigged_game({0: "4O 5C 6E 7B", 1: "4C 5E 6B 7O", 2: "4E 5B 6O 7C", 3: "4B 5O 6C 7E"}, score=(35, 0))
+    game = rigged_game(
+        {0: "4O 5C 6E 7B", 1: "4C 5E 6B 7O", 2: "4E 5B 6O 7C", 3: "4B 5O 6C 7E"}, score=(35, 0)
+    )
     act(game, BetAction(2), RejectAction(), RejectAction())
     assert any(e.kind is EventKind.TEAM_IS_IN and e.payload["team"] == 0 for e in game.events)
 
 
 def test_la_mano_rota_al_terminar_la_jugada():
-    game = rigged_game({0: "4O 5C 6E 7B", 1: "4C 5E 6B 7O", 2: "4E 5B 6O 7C", 3: "4B 5O 6C 7E"}, mano=2)
+    game = rigged_game(
+        {0: "4O 5C 6E 7B", 1: "4C 5E 6B 7O", 2: "4E 5B 6O 7C", 3: "4B 5O 6C 7E"}, mano=2
+    )
     play_all_pass(game)
     assert game.mano == 3 and game.dealer == 2
 

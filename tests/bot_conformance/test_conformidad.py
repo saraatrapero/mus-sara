@@ -20,7 +20,7 @@ def entry(request):
 
 
 def test_metadatos_validos(entry):
-    assert entry.name and entry.name.isidentifier() or entry.name.replace("-", "_").isidentifier()
+    assert (entry.name and entry.name.isidentifier()) or entry.name.replace("-", "_").isidentifier()
     bot = entry.factory()
     assert isinstance(bot, Bot)
 
