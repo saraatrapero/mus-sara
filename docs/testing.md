@@ -60,3 +60,25 @@ Lectura honesta:
 | Tiempo de decisión | `MatchResult.decision_times`; el test de conformidad exige p99 < 2 s |
 | Calibración | Comparar P(ganar \| acepta) estimada con la frecuencia real (se usó para corregir los agentes, ADR-009) |
 | Adaptación | Error y confianza del PlayerModel frente a jugadores sintéticos (`experiments/adaptation.py`, `tests/unit/test_player_model.py`) |
+
+### Adaptación del bot profesional (25 partidas por configuración)
+
+`experiments/adaptation.py` enfrenta al bot profesional a jugadores sintéticos con y sin
+memoria persistente entre partidas:
+
+| Rival | Memoria | % victorias del profesional | P(farol) estimada del rival (confianza) |
+|---|---|---|---|
+| Farolero (`bluff=0.8`) | no | 84 % | 0.34 (0.81) |
+| Farolero (`bluff=0.8`) | **sí** | **88 %** | 0.46 (0.89) |
+| Conservador (`bluff=0`, umbral 0.85) | no | 76 % | 0.06 (0.62) |
+| Conservador (`bluff=0`, umbral 0.85) | **sí** | 72 % | 0.02 (0.85) |
+
+Lectura honesta:
+
+- El **modelo** aprende lo que debe: con memoria, la estimación de farol se separa claramente
+  entre el farolero (0.46) y el conservador (0.02), y la confianza sube.
+- El **impacto en victorias** es pequeño y, con 25 partidas, no es significativo (+4 puntos
+  frente al farolero, −4 frente al conservador). Convertir mejor la información del modelo en
+  decisiones es la principal línea de mejora (ver doc 10 del diseño).
+- `bluff_frequency` mide la fracción de envites hechos con mano débil, no P(envidar | mano débil):
+  por eso el farolero con `bluff=0.8` aparece con 0.46.
