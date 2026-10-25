@@ -1,0 +1,6 @@
+name = "ejemplo"
+author = "MUS.ST"
+version = "1.0"
+entrypoint = "bot:EjemploBot"
+description = "Bot del tutorial: juega a reyes."
+deterministic = true
