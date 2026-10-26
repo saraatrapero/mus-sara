@@ -287,4 +287,4 @@ def _set_session(response: Response, token: str) -> None:
     )
 
 
-app = create_app() if os.environ.get("MUSST_NO_APP") != "1" else None  # type: ignore[assignment]
+app: FastAPI | None = create_app() if os.environ.get("MUSST_NO_APP") != "1" else None

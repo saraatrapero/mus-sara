@@ -26,7 +26,7 @@ def seat_statistics(
     kinds = Counter(d.kind for d in decisions)
     bets = [d for d in decisions if d.kind in ("bet", "raise", "ordago")]
     responses = [d for d in decisions if d.responding and d.kind in ("accept", "reject")]
-    known = [d for d in bets if d.strength is not None]
+    known = [d.strength for d in bets if d.strength is not None]
     by_lance: dict[str, dict[str, int]] = {}
     for lance in LANCES:
         ds = [d for d in decisions if d.lance == lance]
@@ -51,9 +51,7 @@ def seat_statistics(
         "mus": kinds["mus"],
         "cortes": kinds["cut"],
         "tasa_aceptacion": (kinds["accept"] / len(responses)) if responses else None,
-        "frecuencia_farol": (sum(1 for d in known if d.strength < WEAK) / len(known))
-        if known
-        else None,
+        "frecuencia_farol": (sum(1 for s in known if s < WEAK) / len(known)) if known else None,
         "tantos_pareja": points_won,
         "por_lance": by_lance,
     }
@@ -171,3 +169,52 @@ def what_if(
         "si_rechazas": -previous,
         "mejor_opcion": "aceptar" if (stake if won else -stake) > -previous else "rechazar",
     }
+
+
+ORDAGO_POINTS = 40  # un órdago decide la partida: se cuenta como el juego entero
+
+
+def decision_counterfactuals(
+    history: Sequence[dict[str, Any]], seat: int, limit: int = 5
+) -> list[dict[str, Any]]:
+    """Contrafactual de cada envite que ``seat`` aceptó o rechazó (solo partidas terminadas).
+
+    Compara lo que pasó con la alternativa usando las manos reveladas. Cuenta solo la apuesta
+    del lance (no los tantos de pares o juego, que se cobran igual en ambos casos). Un órdago
+    aceptado vale la partida entera (``ORDAGO_POINTS``).
+    """
+    stake: dict[tuple[int, str], tuple[int, int]] = {}  # (jugada, lance) -> (total, anterior)
+    out: list[dict[str, Any]] = []
+    for e in history:
+        p = e["payload"]
+        key = (e["round"], p.get("lance", ""))
+        if e["kind"] == "BetPlaced":
+            stake[key] = (p["amount"], 1)
+        elif e["kind"] == "BetRaised":
+            stake[key] = (p["total"], stake.get(key, (1, 1))[0])
+        elif e["kind"] == "OrdagoDeclared":
+            stake[key] = (ORDAGO_POINTS, stake.get(key, (1, 1))[0])
+        elif e["kind"] in ("BetAccepted", "BetRejected", "OrdagoAccepted") and e["actor"] == seat:
+            if e["kind"] == "BetRejected" and not p.get("final", True):
+                continue
+            total, previous = stake.get(key, (p.get("amount", 2), 1))
+            result = what_if(history, e["round"], p["lance"], seat, total, previous)
+            if result is None:
+                continue
+            chose = "rechazar" if e["kind"] == "BetRejected" else "aceptar"
+            got = result["si_aceptas"] if chose == "aceptar" else result["si_rechazas"]
+            alt = result["si_rechazas"] if chose == "aceptar" else result["si_aceptas"]
+            out.append(
+                {
+                    "jugada": e["round"],
+                    "lance": p["lance"],
+                    "envite": total,
+                    "ordago": total == ORDAGO_POINTS,
+                    "elegiste": chose,
+                    "tantos": got,
+                    "alternativa": alt,
+                    "acierto": got >= alt,
+                }
+            )
+    out.sort(key=lambda d: abs(d["tantos"] - d["alternativa"]), reverse=True)
+    return out[:limit]

@@ -11,7 +11,7 @@ Práctica de **Inteligencia Artificial — 3º MAT-A, CUNEF Universidad, 2026/20
 
 | Jugar | Aprender | Competir | Analizar |
 |---|---|---|---|
-| Partida rápida, personalizada, contra un bot concreto, con compañero humano por invitación | Tutorial interactivo, aprender jugando, situaciones de entrenamiento, asistente «¿qué puedo hacer?» | Bot Arena, torneo automático, scoreboard, observar Bot vs Bot | Historial, replay ⏮ ◀ ▶ ⏭, estadísticas, estilo de juego, momentos clave |
+| Partida rápida, personalizada, contra un bot concreto, con compañero humano por invitación | Tutorial interactivo, aprender jugando, situaciones de entrenamiento, asistente «¿qué puedo hacer?» | Bot Arena, torneo automático, scoreboard, observar Bot vs Bot | Historial, replay ⏮ ◀ ▶ ⏭, estadísticas, estilo de juego, momentos clave, «¿y si hubieras elegido lo contrario?» |
 
 ## Empezar
 

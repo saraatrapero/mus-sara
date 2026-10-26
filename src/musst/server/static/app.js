@@ -106,6 +106,7 @@ async function api(path, { method = "GET", body, token } = {}) {
   if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Error del servidor");
   return data;
 }
+const fmtOutcome = (c, v) => (c.ordago && Math.abs(v) === c.envite ? (v > 0 ? "ganas la partida" : "pierdes la partida") : `${v > 0 ? "+" : ""}${v} tantos`);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const h = (html) => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms * (settings.reduce_motion ? 0.2 : settings.speed)));
@@ -216,7 +217,7 @@ function home() {
     </section>
     <section class="pillars" aria-label="Modos de juego">
       <div class="panel stack">
-        <span class="kicker">Jugar</span><h3>Personalizada</h3>
+        <span class="kicker">Jugar</span><h2 class="card-title">Personalizada</h2>
         <form id="custom" class="stack">
           <div class="form-grid">
             <label class="field">Rivales<select name="rivals"><option value="sencillo">Sencillo</option><option value="medio" selected>Medio</option><option value="profesional">Profesional</option></select></label>
@@ -232,18 +233,18 @@ function home() {
         </form>
       </div>
       <div class="panel stack">
-        <span class="kicker">Entrenar</span><h3>Contra un bot</h3>
+        <span class="kicker">Entrenar</span><h2 class="card-title">Contra un bot</h2>
         <p class="muted">Elige un bot concreto y enfréntate a él tantas veces como quieras.</p>
         <label class="field">Bot<select id="vs-bot"><option value="sencillo">Sencillo</option><option value="medio">Medio</option><option value="profesional">Profesional</option></select></label>
         <button class="btn" id="vs-start">Jugar contra este bot</button>
         <hr style="border:0;border-top:1px solid var(--line);width:100%">
-        <h3>Entrenamiento</h3>
+        <h2 class="card-title">Entrenamiento</h2>
         <p class="muted">Sin presión: con el asistente de reglas abierto y análisis al terminar.</p>
         <button class="btn" id="train-game">Partida de entrenamiento</button>
         <button class="btn ghost" data-nav="training">Situaciones de entrenamiento</button>
       </div>
       <div class="panel stack">
-        <span class="kicker">Continuar</span><h3>Tus partidas</h3>
+        <span class="kicker">Continuar</span><h2 class="card-title">Tus partidas</h2>
         <div id="resume" class="stack muted">Inicia sesión para guardar tu historial, estadísticas y logros.</div>
       </div>
     </section>
@@ -341,7 +342,7 @@ function renderGame(bubbles = {}) {
     const revealed = obs.revealed_hands && obs.revealed_hands[String(s.seat)];
     const cards = s.seat === me ? "" : revealed
       ? `<div class="hand">${revealed.map((c) => cardHTML(c, { small: true })).join("")}</div>`
-      : `<div class="backs" aria-label="4 cartas ocultas">${'<span class="back"></span>'.repeat(4)}</div>`;
+      : `<div class="backs" role="img" aria-label="4 cartas ocultas">${'<span class="back"></span>'.repeat(4)}</div>`;
     const avatar = s.kind === "bot" ? "🤖" : esc(s.avatar || "🧑");
     const bubble = bubbles[s.seat] ? `<span class="bubble ${bubbles[s.seat] === "ÓRDAGO" ? "ordago" : ""}">${bubbles[s.seat]}</span>` : "";
     const status = s.waiting ? '<span class="chip">esperando…</span>' : !s.connected ? '<span class="chip">desconectado</span>' : "";
@@ -358,6 +359,7 @@ function renderGame(bubbles = {}) {
   $main.innerHTML = "";
   $main.append(h(`
   <div class="game">
+    <h1 class="sr-only">Mesa de juego</h1>
     <div class="scorebar" role="region" aria-label="Marcador">
       <div><div class="lances" aria-label="Lances">${lanceBar}</div><small class="muted">Jugada ${obs.round} · a ${obs.target} tantos · ${current.obs.mode}</small></div>
       <div class="scores">${scoreLine(myTeam)}${scoreLine(1 - myTeam)}</div>
@@ -525,7 +527,7 @@ async function showSummary() {
     const won = a.result.winner === a.result.my_team;
     const s = a.stats;
     openModal(`
-      <h2 id="modal-title">${won ? "Victoria" : "Derrota"} · ${a.result.score[a.result.my_team]} – ${a.result.score[1 - a.result.my_team]}</h2>
+      <h2 id="modal-title">${won ? "Victoria" : "Derrota"} · ${a.result.reason === "ordago" ? "por órdago" : `${a.result.score[a.result.my_team]} – ${a.result.score[1 - a.result.my_team]}`}</h2>
       <h3>Momentos clave</h3>
       <ul>${a.key_moments.map((m) => `<li>Jugada ${m.round_no}: ${esc(m.description)}</li>`).join("") || "<li>Partida tranquila.</li>"}</ul>
       <h3>Tu partida</h3>
@@ -535,6 +537,7 @@ async function showSummary() {
         <tr><td>Mus / cortes</td><td>${s.mus} / ${s.cortes}</td></tr>
         <tr><td>Envites con mano débil</td><td>${s.frecuencia_farol == null ? "—" : Math.round(s.frecuencia_farol * 100) + " %"}</td></tr>
       </tbody></table></div>
+      ${(a.counterfactuals || []).length ? `<h3>¿Y si hubieras elegido lo contrario?</h3><ul>${a.counterfactuals.map((c) => `<li>Jugada ${c.jugada}, ${esc(c.lance)} ${c.ordago ? "(órdago)" : `(envite de ${c.envite})`}: elegiste <strong>${c.elegiste}</strong> → ${fmtOutcome(c, c.tantos)}; lo contrario → ${fmtOutcome(c, c.alternativa)}. ${c.acierto ? "✓ Buena decisión" : "✗ Lo contrario era mejor"}</li>`).join("")}</ul><p class="muted">Calculado con las manos ya reveladas, solo al terminar la partida.</p>` : ""}
       ${a.learning.length ? `<h3>Aprendizaje del bot</h3><ul>${a.learning.map((l) => `<li>${esc(l)}</li>`).join("")}</ul>` : ""}
       <div class="row" style="margin-top:12px">
         <button class="btn primary" id="again">Otra partida</button>
@@ -559,7 +562,7 @@ function replayFromHistory(history, seats) {
   let i = 0; let timer = null;
   $main.innerHTML = "";
   $main.append(h(`<div class="page stack">
-    <h2>Replay</h2>
+    <h1 class="page-title">Replay</h1>
     <div class="table" style="min-height:260px" id="replay-table"></div>
     <div class="replay-controls" role="group" aria-label="Controles de reproducción">
       <button class="btn" id="r-first" aria-label="Principio">⏮</button><button class="btn" id="r-prev" aria-label="Anterior">◀</button>
@@ -580,7 +583,7 @@ function replayFromHistory(history, seats) {
     const seatsHTML = seats.map((s) => `<div class="seat ${seatPosition(s.seat, 0)}">
       ${cur && cur.actor === s.seat && BUBBLE[cur.kind] ? `<span class="bubble">${BUBBLE[cur.kind]}</span>` : ""}
       <div class="avatar">${s.kind === "bot" ? "🤖" : "🧑"}</div><div class="seat-name">${esc(s.name)}</div>
-      ${hands ? `<div class="hand">${hands[String(s.seat)].map((c) => cardHTML(c, { small: true })).join("")}</div>` : '<div class="backs">' + '<span class="back"></span>'.repeat(4) + "</div>"}</div>`).join("");
+      ${hands ? `<div class="hand">${hands[String(s.seat)].map((c) => cardHTML(c, { small: true })).join("")}</div>` : '<div class="backs" role="img" aria-label="Mano no revelada">' + '<span class="back"></span>'.repeat(4) + "</div>"}</div>`).join("");
     document.getElementById("replay-table").innerHTML = seatsHTML +
       `<div class="center"><div><div class="lance-title">${esc(lance)}</div><div class="bet-info">A ${score[0]} – B ${score[1]}</div><div class="bet-info">${esc(cur ? eventText(cur, names) : "")}</div></div></div>`;
     const log = document.getElementById("r-log");
@@ -603,15 +606,15 @@ function replayFromHistory(history, seats) {
 // ------------------------------------------------------------------ APRENDER
 function learn() {
   $main.append(h(`<div class="page stack">
-    <h2>Aprender</h2>
+    <h1 class="page-title">Aprender</h1>
     <div class="pillars">
-      <div class="panel stack"><span class="kicker">Desde cero</span><h3>Tutorial interactivo</h3>
+      <div class="panel stack"><span class="kicker">Desde cero</span><h2 class="card-title">Tutorial interactivo</h2>
         <p class="muted">Cartas, mano, mus, grande, chica, pares, juego, punto, envites, órdago y tanteo, con ejemplos.</p>
         <button class="btn primary" data-nav="tutorial">Empezar el tutorial</button></div>
-      <div class="panel stack"><span class="kicker">Practicando</span><h3>Aprender jugando</h3>
+      <div class="panel stack"><span class="kicker">Practicando</span><h2 class="card-title">Aprender jugando</h2>
         <p class="muted">Una partida tranquila contra bots sencillos con el asistente de reglas siempre abierto.</p>
         <button class="btn" id="learn-play">Jugar aprendiendo</button></div>
-      <div class="panel stack"><span class="kicker">Decisiones</span><h3>Situaciones de entrenamiento</h3>
+      <div class="panel stack"><span class="kicker">Decisiones</span><h2 class="card-title">Situaciones de entrenamiento</h2>
         <p class="muted">Situaciones concretas («vas 35-38, te envidan 4…»). Decide y mira el análisis.</p>
         <button class="btn" data-nav="training">Ver situaciones</button></div>
     </div></div>`));
@@ -646,7 +649,7 @@ function tutorial(step = 0) {
   const s = TUTORIAL[step];
   $main.innerHTML = "";
   $main.append(h(`<div class="page"><div class="panel tutorial-step">
-    <span class="kicker">Paso ${step + 1} de ${TUTORIAL.length}</span><h2>${s.t}</h2>
+    <span class="kicker">Paso ${step + 1} de ${TUTORIAL.length}</span><h1 class="page-title">${s.t}</h1>
     ${s.c.length ? `<div class="example">${s.c.map((c) => cardHTML(c)).join("")}</div>` : ""}
     <p>${s.p}</p>
     <div class="row"><button class="btn" id="t-prev" ${step === 0 ? "disabled" : ""}>Anterior</button>
@@ -660,7 +663,7 @@ function tutorial(step = 0) {
 }
 
 async function training() {
-  $main.append(h('<div class="page stack"><h2>Situaciones de entrenamiento</h2><div id="sc" class="stack"></div></div>'));
+  $main.append(h('<div class="page stack"><h1 class="page-title">Situaciones de entrenamiento</h1><div id="sc" class="stack"></div></div>'));
   try {
     const list = await api("/api/training/scenarios");
     const box = document.getElementById("sc");
@@ -671,7 +674,7 @@ async function training() {
         const action = a.type === "bet" || a.type === "raise" ? { type: a.type, amount: 2 } : { type: a.type };
         return `<button class="act ${a.type === "ordago" ? "ordago" : ""}" data-sc="${sc.id}" data-action='${JSON.stringify(action)}'>${label}</button>`;
       }).join("");
-      return `<div class="panel stack"><h3>${esc(sc.title)}</h3><p>${esc(sc.prompt)}</p>
+      return `<div class="panel stack"><h2 class="card-title">${esc(sc.title)}</h2><p>${esc(sc.prompt)}</p>
         <div class="hand">${o.hand.map((c) => cardHTML(c)).join("")}</div>
         <p class="muted">Marcador ${o.score[0]} – ${o.score[1]} · ${o.mano === 0 ? "eres mano" : "no eres mano"}</p>
         <div class="actions">${opts}</div><div class="result" id="res-${sc.id}"></div></div>`;
@@ -691,10 +694,10 @@ async function training() {
 // ------------------------------------------------------------------ COMPETIR
 async function arena() {
   $main.append(h(`<div class="page stack">
-    <h2>Bot Arena</h2>
-    <div class="panel stack"><h3>Clasificación</h3><div class="table-wrap" id="board">Cargando…</div>
+    <h1 class="page-title">Bot Arena</h1>
+    <div class="panel stack"><h2 class="card-title">Clasificación</h2><div class="table-wrap" id="board">Cargando…</div>
       <p class="muted">Torneo automático (todos contra todos, mus duplicado). Un bot que falla pierde la partida sin romper el torneo.</p></div>
-    <div class="panel stack"><h3>Observar Bot vs Bot</h3>
+    <div class="panel stack"><h2 class="card-title">Observar Bot vs Bot</h2>
       <div class="form-grid"><label class="field">Pareja A<select id="wa"></select></label><label class="field">Pareja B<select id="wb"></select></label></div>
       <button class="btn primary" id="watch">Ver partida</button>
       <p class="muted">Solo se muestra información pública: las cartas, al final de cada jugada.</p></div>
@@ -722,7 +725,7 @@ const STYLE_LABEL = {
 };
 async function stats() {
   if (!user) {
-    $main.append(h('<div class="page"><div class="panel stack"><h2>Analizar</h2><p>Inicia sesión para guardar tus partidas y ver tu estilo de juego.</p><button class="btn primary" id="go-login">Entrar o registrarse</button></div></div>'));
+    $main.append(h('<div class="page"><div class="panel stack"><h1 class="page-title">Analizar</h1><p>Inicia sesión para guardar tus partidas y ver tu estilo de juego.</p><button class="btn primary" id="go-login">Entrar o registrarse</button></div></div>'));
     document.getElementById("go-login").onclick = loginDialog;
     return;
   }
@@ -735,23 +738,23 @@ async function stats() {
       return `<svg viewBox="0 0 ${w} ${hgt}" width="100%" height="60" role="img" aria-label="Tantos por partida"><polyline fill="none" stroke="var(--accent)" stroke-width="2" points="${pts}"/></svg>`;
     })() : '<p class="muted">Juega más partidas para ver tu evolución.</p>';
     $main.append(h(`<div class="page stack">
-      <h2>Tu estilo de juego</h2>
+      <h1 class="page-title">Tu estilo de juego</h1>
       <div class="grid-2">
-        <div class="panel"><h3>Resumen</h3><table class="data"><tbody>
+        <div class="panel"><h2 class="card-title">Resumen</h2><table class="data"><tbody>
           <tr><td>Partidas</td><td>${s.partidas}</td></tr><tr><td>Victorias / derrotas</td><td>${s.victorias} / ${s.derrotas}</td></tr>
           <tr><td>% victorias</td><td>${pct(s.porcentaje_victorias)}</td></tr><tr><td>Tantos medios</td><td>${s.tantos_medios == null ? "—" : s.tantos_medios.toFixed(1)}</td></tr>
           <tr><td>Envites / órdagos</td><td>${s.totales.envites ?? 0} / ${s.totales.ordagos ?? 0}</td></tr>
           <tr><td>Aceptaciones / rechazos</td><td>${s.totales.aceptaciones ?? 0} / ${s.totales.rechazos ?? 0}</td></tr>
           <tr><td>Mus</td><td>${s.totales.mus ?? 0}</td></tr></tbody></table></div>
-        <div class="panel stack"><h3>Estilo (estimaciones)</h3>
+        <div class="panel stack"><h2 class="card-title">Estilo (estimaciones)</h2>
           ${Object.entries(s.estilo).map(([k, v]) => `<div><div class="row" style="justify-content:space-between"><span>${STYLE_LABEL[k] ?? k}</span><span class="muted">${Math.round(v.value * 100)} % · confianza ${v.confidence.toLowerCase()}</span></div><div class="bar"><span style="width:${Math.round(v.value * 100)}%"></span></div></div>`).join("")}
           <p class="muted">Son estadísticas descriptivas con su incertidumbre, no una nota sobre lo bueno que eres.</p></div>
       </div>
-      <div class="panel"><h3>Por lance</h3><div class="table-wrap"><table class="data"><thead><tr><th class="l">Lance</th><th>Envites</th><th>Aceptados</th><th>Rechazados</th><th>Pasos</th></tr></thead><tbody>
+      <div class="panel"><h2 class="card-title">Por lance</h2><div class="table-wrap"><table class="data"><thead><tr><th class="l">Lance</th><th>Envites</th><th>Aceptados</th><th>Rechazados</th><th>Pasos</th></tr></thead><tbody>
         ${Object.entries(s.por_lance).map(([l, d]) => `<tr><td>${LANCE[l]}</td><td>${d.envites ?? 0}</td><td>${d.aceptados ?? 0}</td><td>${d.rechazados ?? 0}</td><td>${d.pasos ?? 0}</td></tr>`).join("")}</tbody></table></div></div>
-      <div class="panel"><h3>Evolución</h3>${spark}</div>
-      <div class="panel"><h3>Logros</h3>${s.logros.length ? s.logros.map((l) => `<span class="badge">🏅 ${esc(l.replaceAll("_", " "))}</span> `).join("") : '<p class="muted">Todavía ninguno.</p>'}</div>
-      <div class="panel"><h3>Historial</h3><div id="hist" class="stack"></div></div>
+      <div class="panel"><h2 class="card-title">Evolución</h2>${spark}</div>
+      <div class="panel"><h2 class="card-title">Logros</h2>${s.logros.length ? s.logros.map((l) => `<span class="badge">🏅 ${esc(l.replaceAll("_", " "))}</span> `).join("") : '<p class="muted">Todavía ninguno.</p>'}</div>
+      <div class="panel"><h2 class="card-title">Historial</h2><div id="hist" class="stack"></div></div>
     </div>`));
     const games = await api("/api/history");
     document.getElementById("hist").innerHTML = games.map((g) => `<div class="row" style="justify-content:space-between"><span>${new Date(g.started_at * 1000).toLocaleString()} · ${esc(g.mode)} · ${g.score ? g.score.join("–") : ""}</span>
@@ -764,7 +767,7 @@ async function stats() {
 // ------------------------------------------------------------------ ajustes y cuenta
 function settingsView() {
   const opt = (name, values, cur) => values.map(([v, l]) => `<option value="${v}" ${String(cur) === String(v) ? "selected" : ""}>${l}</option>`).join("");
-  $main.append(h(`<div class="page"><div class="panel stack"><h2>Ajustes</h2>
+  $main.append(h(`<div class="page"><div class="panel stack"><h1 class="page-title">Ajustes</h1>
     <form id="sf" class="form-grid">
       <label class="field">Tema<select name="theme">${opt("theme", [["auto", "Automático"], ["light", "Claro"], ["dark", "Oscuro"]], settings.theme)}</select></label>
       <label class="field">Tamaño de texto<select name="text_size">${opt("t", [[0.9, "Pequeño"], [1, "Normal"], [1.15, "Grande"], [1.3, "Muy grande"]], settings.text_size)}</select></label>

@@ -96,7 +96,7 @@ class WinEstimate:
         """Error estándar → confianza en [0, 1]."""
         if self.samples == 0:
             return 0.0
-        se = (self.p_win * (1 - self.p_win) / self.samples) ** 0.5
+        se: float = (self.p_win * (1 - self.p_win) / self.samples) ** 0.5
         return max(0.0, 1.0 - 4 * se)
 
 

@@ -18,7 +18,7 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: ruff check .
       - run: ruff format --check .
-      - run: mypy src/musst/engine src/musst/bots/api.py
+      - run: mypy src
 
   test:
     runs-on: ubuntu-latest

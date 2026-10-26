@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from musst.agents.base import Decision
-from musst.analytics.analysis import key_moments, seat_statistics
+from musst.analytics.analysis import decision_counterfactuals, key_moments, seat_statistics
 from musst.bots.api import Bot, GameEndInfo, GameStartInfo
 from musst.bots.registry import get_entry
 from musst.engine.actions import Action, action_from_dict, action_to_dict
@@ -342,9 +342,11 @@ class SessionManager:
                 "winner": session.game.result.winner if session.game.result else None,
                 "score": list(session.game.score),
                 "my_team": team_of(seat.index),
+                "reason": session.game.result.reason if session.game.result else None,
             },
             "stats": seat_statistics(history, seat.index, session.game.config.target_points),
             "key_moments": [m.__dict__ for m in moments],
+            "counterfactuals": decision_counterfactuals(history, seat.index),
             "learning": session.learning,
             "history": history,
         }
