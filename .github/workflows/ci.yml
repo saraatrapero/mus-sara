@@ -18,7 +18,7 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: ruff check .
       - run: ruff format --check .
-      - run: mypy src/musst/engine src/musst/bots/api.py
+      - run: mypy src
 
   test:
     runs-on: ubuntu-latest
@@ -63,3 +63,25 @@ jobs:
           assert status == 200, data
           print("backend del navegador OK")
           PY
+
+  supabase-schema:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_PASSWORD: postgres }
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      # Imitación mínima de Supabase + esquema dos veces (idempotente) + pruebas de RLS
+      - run: |
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/auth_stub.sql
+          sed 's/^create extension if not exists pgcrypto.*$/-- pgcrypto simulado/' supabase/schema.sql > /tmp/schema.sql
+          psql -v ON_ERROR_STOP=1 -f /tmp/schema.sql
+          psql -v ON_ERROR_STOP=1 -f /tmp/schema.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/test_schema.sql

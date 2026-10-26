@@ -16,6 +16,8 @@ from musst.learning.player_model import score_context
 
 WEAK = 0.4
 """Por debajo de esta fuerza heurística, envidar se considera farol."""
+STRONG = 0.65
+"""Desde esta fuerza, la mano se considera buena."""
 
 
 @dataclass(frozen=True)
@@ -30,6 +32,7 @@ class Decision:
     score_ctx: str
     strength: float | None  # fuerza de la mano revelada en ese lance (si se conoce)
     stake: int
+    amount: int = 0  # piedras que pone en juego con esta acción (envite, subida u órdago=40)
 
 
 def extract_decisions(history: Iterable[dict[str, Any]], target: int = 40) -> list[Decision]:
@@ -78,7 +81,20 @@ def extract_decisions(history: Iterable[dict[str, Any]], target: int = 40) -> li
         round_hands = hands.get(e["round"])
         if round_hands and lance != "mus":
             strength = hand_strength(round_hands[actor], lance)
-        decisions.append(Decision(e["round"], actor, lance, action, pending, ctx, strength, stake))
+        amount = {"bet": payload.get("amount", 0), "raise": payload.get("total", 0), "ordago": 40}
+        decisions.append(
+            Decision(
+                e["round"],
+                actor,
+                lance,
+                action,
+                pending,
+                ctx,
+                strength,
+                stake,
+                amount.get(action, 0),
+            )
+        )
         if action in ("bet", "raise", "ordago"):
             pending = True
             stake = payload.get("total", payload.get("amount", stake))

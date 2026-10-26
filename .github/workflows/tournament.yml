@@ -25,6 +25,9 @@ jobs:
         with: { python-version: "3.12" }
       - run: pip install -e ".[docs]"
       - run: python scripts/build_web.py --out site
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
       - run: mkdocs build --strict --site-dir site/docs
       - run: musst-arena --games 10 --seed 2026 --out site/scoreboard
       - run: cat site/scoreboard/scoreboard.md >> "$GITHUB_STEP_SUMMARY"

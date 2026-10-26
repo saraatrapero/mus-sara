@@ -32,7 +32,7 @@ como **[CONVENCIÓN]**: siguen el Mus tradicional, son configurables en
 | Los cuatro enseñan las cartas al acabar juego/punto | FEM VII.9 | evento `HandsRevealed` |
 | "Estamos dentro" a ≤ 4 tantos | FEM VII.7 | evento `TeamIsIn` |
 | Juego a 40 tantos (40-60) | FEM Intro E | `target_points` |
-| Señas oficiales | FEM VIII.2-7 | `engine/signals.py` (preparado, desactivado) |
+| Señas oficiales, siempre verdaderas | FEM VIII.2-7 | `MusGame.signal`, `engine/signals.py` |
 
 ## Convenciones (no especificadas por la FEM)
 
@@ -72,3 +72,23 @@ se traduce en un límite de tiempo por decisión.
 
 El Reglamento habla de partidas "a cinco juegos". MUS.ST juega por defecto **un juego a 40
 tantos** (configurable a 20-60). Pendiente de confirmar con el profesor (P4).
+
+## Señas y miradas (FEM VIII)
+
+Activadas con `signals_enabled` (la web las activa; el torneo y los tests de referencia no).
+
+- **Solo señas oficiales y verdaderas**: el motor rechaza una seña que la mano no respalda
+  (FEM VIII.4). Se pueden hacer **después de cortar el mus** y cada una una vez por jugada.
+- **Miradas**: cada jugador mira a su compañero, a un rival o a la mesa durante unos pasos de
+  tiempo, al azar (`gaze_weights`, `gaze_min_ticks`, `gaze_max_ticks`). Hacia dónde mira cada
+  uno es público.
+- **Quién ve la seña**: exactamente quienes miran en ese instante al que la hace. Si es el
+  compañero, la ventaja es de la pareja; si es un rival, la información es para el rival; si
+  no mira nadie, la seña se pierde. Quien la hace sabe quién le miraba.
+- **Tiempo**: avanza con cada acción y con `MusGame.tick()` (en la web, cada ~2 s).
+- **Privacidad**: cada asiento solo recibe las señas que ha visto (eventos privados
+  `SignalSeen`/`SignalMade`). Los bots usan las señas vistas para restringir las manos que
+  simulan (`toolkit.sample_world`).
+- **Reproducible**: las miradas usan un generador aparte derivado de la semilla, así que
+  activar las señas no cambia el reparto; el registro de la partida guarda señas y pasos del
+  reloj para reconstruirla.

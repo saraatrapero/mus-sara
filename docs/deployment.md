@@ -41,6 +41,20 @@ python -m http.server -d site 8001          # probar en http://localhost:8001
 Diferencias con el servidor: perfil local sin contraseña, sin compañero humano por invitación y
 sin bots externos en subproceso (el torneo los ejecuta en GitHub Actions).
 
+## Cuentas de usuario (Supabase)
+
+1. Crea un proyecto gratuito en https://supabase.com.
+2. *Authentication → Providers → Email*: desactiva **Confirm email** (los usuarios entran con
+   nombre de usuario; el correo es interno).
+3. *SQL Editor*: pega y ejecuta `supabase/schema.sql`.
+4. Regístrate en la web y hazte administradora en el *SQL Editor*:
+   `update public.profiles set role = 'admin' where username = 'TU_USUARIO';`
+5. En GitHub, *Settings → Secrets and variables → Actions → Variables*: crea
+   `SUPABASE_URL` y `SUPABASE_ANON_KEY` (*Project Settings → API*). Son públicas por diseño;
+   **nunca** uses la clave `service_role`.
+
+Sin esas variables la web funciona igual con un perfil local por navegador.
+
 ## Alternativa con servidor
 
 El mismo `Dockerfile` y `render.yaml` permiten desplegar el servidor FastAPI en Render o Hugging

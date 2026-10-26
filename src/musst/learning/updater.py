@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
-from musst.learning.extract import WEAK, Decision, extract_decisions
+from musst.learning.extract import STRONG, WEAK, Decision, extract_decisions
 from musst.learning.player_model import (
     PRIORS,
     PlayerModel,
@@ -46,8 +46,17 @@ def apply_decisions(model: PlayerModel, decisions: Iterable[Decision]) -> None:
             continue
         if is_bet:
             model.record("bluff_frequency", d.strength < WEAK, lance, ctx)
+            bucket = "fuerte" if d.strength >= STRONG else "floja" if d.strength < WEAK else "media"
+            model.record_stake(lance, bucket, d.amount)
+        if not d.responding:
+            if d.strength >= STRONG:
+                model.record("bet_with_strong", is_bet, lance, ctx)
+            elif d.strength < WEAK:
+                model.record("bet_with_weak", is_bet, lance, ctx)
         if d.kind == "accept":
             model.record("risk_tolerance", d.strength < 0.5, lance, ctx)
+        if d.responding and d.kind in ("accept", "reject") and d.strength < WEAK:
+            model.record("accept_with_weak", d.kind == "accept", lance, ctx)
 
 
 @dataclass
@@ -182,6 +191,7 @@ class Learner:
             long.games += 1
             recent.games += 1
             drift = detect_drift(long, recent)
+            long.drift_recent = bool(drift)
             if drift:
                 long.scale_confidence(DRIFT_CONFIDENCE_FACTOR)
             self.store.save(long)

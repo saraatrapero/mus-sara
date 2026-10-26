@@ -15,7 +15,7 @@ Práctica de **Inteligencia Artificial — 3º MAT-A, CUNEF Universidad, 2026/20
 
 | Jugar | Aprender | Competir | Analizar |
 |---|---|---|---|
-| Partida rápida, personalizada, contra un bot concreto, con compañero humano por invitación | Tutorial interactivo, aprender jugando, situaciones de entrenamiento, asistente «¿qué puedo hacer?» | Bot Arena, torneo automático, scoreboard, observar Bot vs Bot | Historial, replay ⏮ ◀ ▶ ⏭, estadísticas, estilo de juego, momentos clave |
+| Partida rápida, personalizada, contra un bot concreto, con compañero humano por invitación | Tutorial interactivo, aprender jugando, situaciones de entrenamiento, asistente «¿qué puedo hacer?» | Bot Arena, torneo automático, scoreboard, observar Bot vs Bot | Historial, replay ⏮ ◀ ▶ ⏭, estadísticas, estilo de juego, momentos clave, «¿y si hubieras elegido lo contrario?» |
 
 ## Empezar
 
@@ -23,7 +23,7 @@ Práctica de **Inteligencia Artificial — 3º MAT-A, CUNEF Universidad, 2026/20
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-pytest                                   # 156 tests
+pytest                                   # 174 tests
 musst-play --bots sencillo profesional   # una partida sin interfaz
 musst-arena --games 5                    # torneo entre todos los bots
 MUSST_SECURE_COOKIES=0 uvicorn musst.server.app:app --reload   # web con servidor: http://localhost:8000

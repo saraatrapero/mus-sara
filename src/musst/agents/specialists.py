@@ -10,8 +10,9 @@ from musst.bots.toolkit import (
     hand_strength,
     lance_winner,
     sample_world,
+    unseen_cards,
 )
-from musst.learning.extract import WEAK
+from musst.learning.extract import STRONG, WEAK
 from musst.learning.player_model import PRIORS, score_context
 
 BETTING_EVENTS = {"BetPlaced", "BetRaised", "OrdagoDeclared"}
@@ -79,13 +80,67 @@ class BehaviourAgent(Agent):
             their = obs.score[seat % 2]
             mine = obs.score[obs.team]
             sctx = score_context(their, mine, obs.target)
-            for metric in ("aggression", "bluff_frequency", "acceptance_rate", "raise_rate"):
+            for metric in (
+                "aggression",
+                "bluff_frequency",
+                "acceptance_rate",
+                "raise_rate",
+                "bet_with_strong",
+                "bet_with_weak",
+            ):
                 if ctx.learner is None or pid is None:
                     value, conf = PRIORS[metric], 0.0
                 else:
                     value, conf = ctx.learner.blended(pid, metric, ctx.lance, sctx)
                 report.estimates[f"{metric}_{seat}"] = Estimate(value, conf)
         return report
+
+
+def learned_bet_likelihood(strength: float, with_weak: float, with_strong: float) -> float:
+    """P(envida | fuerza) aprendida del jugador: interpola entre lo que hace con mano floja y
+    con mano buena (manos enseñadas al final de cada jugada, FEM VII.9)."""
+    t = max(0.0, min(1.0, (strength - WEAK) / (STRONG - WEAK)))
+    return max(0.02, with_weak + (with_strong - with_weak) * t)
+
+
+class CountingAgent(Agent):
+    """Conteo: cartas que ya no pueden tener los demás y cuántas cartas pidió cada uno.
+
+    En el Mus se baraja la baraja entera en cada jugada y los descartes ajenos van boca abajo,
+    así que lo que se puede contar es: mis cartas, mis descartes (salvo que se rebaraje) y el
+    número de cartas que pide cada jugador. Pedir pocas cartas indica que se guardaba buena mano.
+    """
+
+    name = "conteo"
+
+    def analyze(self, ctx: AgentContext) -> AgentReport:
+        obs = ctx.obs
+        report = AgentReport(self.name)
+        asked: dict[int, int] = {}
+        for e in obs.history:
+            if e["round"] != obs.round_no:
+                continue
+            if e["kind"] == "CardsDiscarded" and "count" in e["payload"]:
+                seat = e["payload"]["seat"]
+                asked[seat] = asked.get(seat, 0) + e["payload"]["count"]
+        unseen = len(unseen_cards(obs))
+        report.estimates["unseen_cards"] = Estimate(float(unseen), 1.0)
+        for seat, n in asked.items():
+            report.estimates[f"asked_{seat}"] = Estimate(float(n), 1.0)
+        if asked:
+            report.notes.append(
+                "Cartas pedidas: "
+                + ", ".join(f"asiento {s}: {n}" for s, n in sorted(asked.items()))
+            )
+        return report
+
+
+def discard_weight(strength: float, asked: float | None) -> float:
+    """Peso de un mundo según cuántas cartas pidió el jugador (1 = guardaba casi todo)."""
+    if asked is None:
+        return 1.0
+    kept = max(0.0, 4.0 - asked) / 3.0  # 1 si pidió una carta, 0 si pidió cuatro
+    return max(0.2, 1.0 + 0.8 * kept * (strength - 0.5))
 
 
 class ProbabilityAgent(Agent):
@@ -130,6 +185,19 @@ class ProbabilityAgent(Agent):
         samples = int(ctx.config.get("samples_deep" if ctx.deep else "samples", 200))
         bets = {s: n for s, n in current_lance_bets(ctx).items() if s % 2 != obs.team}
         tau_bet, tau_ordago = self.thresholds(ctx)
+        asked = {
+            s: ctx.estimate("conteo", f"asked_{s}", -1).value
+            for s in obs.opponents
+            if "conteo" in ctx.reports
+        }
+        learned: dict[int, tuple[float, float, float]] = {}
+        if "comportamiento" in ctx.reports:
+            for s in bets:
+                ws = ctx.estimate(
+                    "comportamiento", f"bet_with_strong_{s}", PRIORS["bet_with_strong"]
+                )
+                ww = ctx.estimate("comportamiento", f"bet_with_weak_{s}", PRIORS["bet_with_weak"])
+                learned[s] = (ww.value, ws.value, min(ws.confidence, ww.confidence))
         total = wins = 0.0
         acc_b = win_acc_b = acc_o = win_acc_o = 0.0
         for _ in range(samples):
@@ -140,7 +208,16 @@ class ProbabilityAgent(Agent):
                 bluff = ctx.estimate(
                     "comportamiento", f"bluff_frequency_{seat}", PRIORS["bluff_frequency"]
                 ).value
-                w *= bet_likelihood(strength, bluff, n, self.bet_threshold(ctx, seat))
+                default = bet_likelihood(strength, bluff, n, self.bet_threshold(ctx, seat))
+                if seat in learned:
+                    l_weak, l_strong, conf_l = learned[seat]
+                    own = learned_bet_likelihood(strength, l_weak, l_strong) * default ** (n - 1)
+                    w *= conf_l * own + (1 - conf_l) * default
+                else:
+                    w *= default
+            for seat, n_asked in asked.items():
+                if n_asked >= 0:
+                    w *= discard_weight(hand_strength(world[seat], lance), n_asked)
             winner = lance_winner(lance, world, obs.mano)
             won = winner is not None and winner % 2 == obs.team
             opp = max(hand_strength(world[s], lance) for s in obs.opponents)
@@ -155,19 +232,27 @@ class ProbabilityAgent(Agent):
                 acc_o += w
                 win_acc_o += w * won
         p = wins / total if total else 0.0
+        p_acc_b = win_acc_b / acc_b if acc_b else p
+        p_acc_o = win_acc_o / acc_o if acc_o else p
+        review = ctx.config.get("self_review")
+        if review is not None:  # autocrítica: corrige con lo que de verdad pasó otras veces
+            raw = p
+            p = review.correct(lance, p)
+            p_acc_b = review.correct(lance, p_acc_b)
+            p_acc_o = review.correct(lance, p_acc_o)
+            if abs(p - raw) >= 0.02:
+                report.notes.append(
+                    f"Autocrítica: corrijo P(ganar {lance}) de {raw:.2f} a {p:.2f} por partidas anteriores"
+                )
         se = (p * (1 - p) / samples) ** 0.5
         conf = max(0.0, 1.0 - 4 * se)
         report.estimates["p_win"] = Estimate(p, conf, samples)
         report.estimates["p_accept_bet"] = Estimate(acc_b / total if total else 0.0, conf, samples)
-        report.estimates["p_win_if_accept_bet"] = Estimate(
-            win_acc_b / acc_b if acc_b else p, conf, samples
-        )
+        report.estimates["p_win_if_accept_bet"] = Estimate(p_acc_b, conf, samples)
         report.estimates["p_accept_ordago"] = Estimate(
             acc_o / total if total else 0.0, conf, samples
         )
-        report.estimates["p_win_if_accept_ordago"] = Estimate(
-            win_acc_o / acc_o if acc_o else p, conf, samples
-        )
+        report.estimates["p_win_if_accept_ordago"] = Estimate(p_acc_o, conf, samples)
         report.notes.append(f"P(ganar {lance}) = {p:.2f} con {samples} muestras")
         return report
 

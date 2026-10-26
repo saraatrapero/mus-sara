@@ -1,6 +1,7 @@
 """Escalera de niveles: ¿la diferencia entre bots es real y medible?
 
 python -m experiments.level_ladder --seeds 60 --seed 12345
+python -m experiments.level_ladder --seeds 250 --pair medio profesional
 """
 
 from __future__ import annotations
@@ -25,8 +26,14 @@ def main() -> None:
     parser.add_argument("--seeds", type=int, default=60)
     parser.add_argument("--seed", type=int, default=12345)
     parser.add_argument("--workers", type=int, default=8)
+    parser.add_argument(
+        "--pair",
+        nargs=2,
+        metavar=("A", "B"),
+        help="solo este emparejamiento (p. ej. medio profesional)",
+    )
     args = parser.parse_args()
-    pairs = list(itertools.combinations(BOTS, 2))
+    pairs = [tuple(args.pair)] if args.pair else list(itertools.combinations(BOTS, 2))
     jobs = [(a, b, args.seed + i * 7) for a, b in pairs for i in range(args.seeds)]
     results = parallel_map(_job, jobs, args.workers)
     rows = []
@@ -51,7 +58,13 @@ def main() -> None:
         print(
             f"{a:>12} vs {b:<12} {wins:>4}/{n} = {wins / n:.1%}  IC95 [{lo:.1%}, {hi:.1%}]  Δtantos {diff / n:+.1f}"
         )
-    print("CSV:", write_csv("level_ladder.csv", rows))
+    print(
+        "CSV:",
+        write_csv(
+            "level_ladder_" + "_".join(args.pair) + ".csv" if args.pair else "level_ladder.csv",
+            rows,
+        ),
+    )
 
 
 if __name__ == "__main__":

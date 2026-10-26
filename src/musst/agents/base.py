@@ -65,7 +65,7 @@ class ScoredAction:
 
     def label(self) -> str:
         data = action_to_dict(self.action)
-        return data["type"].upper() + (f"_{data['amount']}" if "amount" in data else "")
+        return str(data["type"]).upper() + (f"_{data['amount']}" if "amount" in data else "")
 
 
 @dataclass(frozen=True)

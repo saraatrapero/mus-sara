@@ -26,3 +26,19 @@ def test_contrafactual_usa_las_manos_reveladas():
     assert result is not None
     assert result["si_aceptas"] in (4, -4)
     assert result["mejor_opcion"] in ("aceptar", "rechazar")
+
+
+def test_contrafactuales_de_las_decisiones_del_jugador():
+    from musst.analytics.analysis import decision_counterfactuals
+
+    found = []
+    for seed in range(1, 8):
+        h = history_of(seed)
+        for seat in range(4):
+            found += decision_counterfactuals(h, seat)
+    assert found
+    for c in found:
+        assert c["elegiste"] in ("aceptar", "rechazar")
+        assert c["acierto"] == (c["tantos"] >= c["alternativa"])
+        if c["elegiste"] == "aceptar":
+            assert abs(c["tantos"]) == c["envite"]

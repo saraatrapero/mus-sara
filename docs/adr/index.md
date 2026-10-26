@@ -98,3 +98,37 @@ limitaciones y cómo se ha probado.
 - **Pruebas**: `tests/integration/test_web_backend.py`; el job `web` del CI genera el sitio y
   comprueba que el paquete funciona sin FastAPI; prueba manual en Chrome (partida completa,
   perfil y estadísticas tras recargar).
+
+## ADR-012 · Señas con miradas en lugar de probabilidades fijas
+
+- **Problema**: en la mesa real una seña la ve quien está mirando; una probabilidad fija de
+  "ser visto" no permite elegir el momento.
+- **Decisión**: miradas públicas que cambian al azar con el tiempo; la seña la ven exactamente
+  quienes miran al que la hace. El bot profesional solo la hace si le mira su compañero y
+  ningún rival; el medio, en cuanto le mira el compañero; el sencillo, si le mira cualquiera.
+- **Pruebas**: `tests/unit/test_miradas_y_senas.py` (veracidad, ventana, privacidad,
+  reproducibilidad, política de los bots, muestreo condicionado).
+
+## ADR-013 · Cuentas en Supabase con GitHub Pages
+
+- **Problema**: cuentas con usuario y contraseña, un administrador y datos compartidos entre
+  dispositivos, sin servidor propio.
+- **Decisión**: Supabase Auth (el usuario se traduce a un correo interno) y Postgres con RLS.
+  Python sigue jugando y aprendiendo en el navegador; `cloud.js` solo sincroniza: al entrar
+  trae el modelo del jugador y la autocrítica de los bots, y al acabar guarda la partida.
+  Las operaciones de administración son funciones `SECURITY DEFINER` que comprueban
+  `is_admin()`.
+- **Limitaciones**: la IA corre en el navegador del jugador (ver ADR-011); un usuario podría
+  enviar datos falsos de sus propias partidas o de la memoria de los bots (no afecta a otros
+  usuarios ni a sus datos, que protege RLS).
+- **Pruebas**: `supabase/tests/test_schema.sql` en un PostgreSQL 16 (job `supabase-schema` del
+  CI); `tests/integration/test_web_backend.py::test_sincronizacion_con_la_nube`.
+
+## ADR-014 · Autocrítica por calibración, no por resultado
+
+- **Problema**: aprender de las derrotas sin aprender supersticiones (se puede perder jugando bien).
+- **Decisión**: tras cada partida el bot revisa sus decisiones con las manos enseñadas; guarda
+  la calibración (probabilidad estimada frente a resultado real, por lance y tramo) y los
+  errores reales (aceptar perdiendo, rechazar ganando). Corrige sus estimaciones encogiendo
+  hacia la original mientras hay pocos datos.
+- **Pruebas**: `tests/unit/test_autocritica.py`.
