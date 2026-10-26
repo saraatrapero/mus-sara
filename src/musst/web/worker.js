@@ -11,7 +11,7 @@ async function boot() {
   progress("Cargando Python…");
   const pyodide = await loadPyodide({ indexURL: PYODIDE });
   progress("Cargando base de datos…");
-  await pyodide.loadPackage("sqlite3");
+  await pyodide.loadPackage(["sqlite3", "hashlib"]); // hashlib: scrypt para las contraseñas
   progress("Cargando el motor de Mus…");
   const zip = await fetch(new URL("musst.zip", self.location.href));
   if (!zip.ok) throw new Error(`musst.zip: HTTP ${zip.status}`);

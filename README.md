@@ -23,7 +23,7 @@ Práctica de **Inteligencia Artificial — 3º MAT-A, CUNEF Universidad, 2026/20
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-pytest                                   # 174 tests
+pytest                                   # 178 tests
 musst-play --bots sencillo profesional   # una partida sin interfaz
 musst-arena --games 5                    # torneo entre todos los bots
 MUSST_SECURE_COOKIES=0 uvicorn musst.server.app:app --reload   # web con servidor: http://localhost:8000

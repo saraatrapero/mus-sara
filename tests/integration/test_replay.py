@@ -9,7 +9,7 @@ from tests.integration.test_web_backend import play_until_end
 
 def test_replay_identico_al_log_reejecutado(tmp_path):
     b = LocalBackend(tmp_path)
-    b.handle("POST", "/api/auth/login", {"username": "sara"}, None)
+    b.handle("POST", "/api/auth/register", {"username": "sara", "password": "contraseña-1"}, None)
     _, data = b.handle(
         "POST", "/api/games", {"seed": 11, "target": 15, "rivals": "profesional"}, None
     )
