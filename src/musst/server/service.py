@@ -54,6 +54,7 @@ PROFILE_SETTINGS = {
     "speed",
     "table",
     "card_back",
+    "signals",
 }
 
 

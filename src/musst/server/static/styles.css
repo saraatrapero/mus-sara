@@ -325,16 +325,30 @@ button.link { background: none; border: 0; padding: 0; color: var(--accent); tex
 .face.gesturing { animation: gesture calc(450ms * var(--speed)) ease-in-out 3; }
 @keyframes gesture { 50% { transform: scale(1.12); } }
 
-/* Amarracos y piedras sobre el tapete */
-.table-score { position: absolute; display: grid; gap: 3px; justify-items: center; padding: 6px 10px; border-radius: 12px;
-  background: rgb(0 0 0 / .22); border: 1px solid rgb(255 255 255 / .18); z-index: 2; min-width: 92px; }
-.table-score small { font-size: .7rem; opacity: .9; }
-.table-score strong { font-size: 1.3rem; line-height: 1; }
-.table-score.mine { left: 14px; bottom: 14px; } .table-score.theirs { right: 14px; top: 14px; }
-.stones { display: grid; gap: 3px; justify-items: center; min-height: 14px; }
-.am-row, .st-row { display: flex; gap: 3px; flex-wrap: wrap; justify-content: center; max-width: 120px; }
-.am { width: 7px; height: 22px; border-radius: 3px; background: linear-gradient(90deg, #8a5a2b, #c48a4a 50%, #8a5a2b); box-shadow: 0 1px 0 rgb(0 0 0 / .4); }
-.st { width: 10px; height: 10px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #f3ead7, #9c9486); box-shadow: 0 1px 0 rgb(0 0 0 / .4); }
+/* Piedras sobre el tapete: sueltas (1 tanto) y de 5, delante de quien las cuenta */
+.pile { display: grid; justify-items: center; gap: 2px; min-height: 22px; }
+.pile small { font-size: .65rem; opacity: .85; }
+.stones-row { display: flex; gap: 3px; flex-wrap: wrap; justify-content: center; max-width: 140px; min-height: 14px; position: relative; }
+.stone { width: 14px; height: 14px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #f3ead7, #9c9486);
+  box-shadow: 0 1px 0 rgb(0 0 0 / .45); display: grid; place-items: center; }
+.stone.five { width: 20px; height: 20px; background: radial-gradient(circle at 35% 35%, #ffe7a3, #b8862e); color: #3a2a10; font-size: .6rem; font-weight: 800; }
+.seat.bottom .pile { --fx: 0px; --fy: -110px; } .seat.top .pile { --fx: 0px; --fy: 110px; }
+.seat.left .pile { --fx: 130px; --fy: 0px; } .seat.right .pile { --fx: -130px; --fy: 0px; }
+.stone.arrive { animation: stone-in calc(800ms * var(--speed)) ease-out both; }
+@keyframes stone-in { from { transform: translate(var(--fx), var(--fy)) scale(.5); opacity: 0; } }
+.ghosts { position: absolute; inset: 0; display: flex; gap: 3px; justify-content: center; pointer-events: none; }
+.stone.leave { animation: stone-out calc(900ms * var(--speed)) ease-in forwards; }
+@keyframes stone-out { from { opacity: 1; } to { transform: translate(var(--fx), var(--fy)) scale(.5); opacity: 0; } }
+.signals-choice { display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 16px; }
+.signals-choice p { margin: 4px 0 0; }
+.seg { display: flex; gap: 8px; flex-wrap: wrap; }
+.seg label { border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; cursor: pointer; font-weight: 600; }
+.seg label:has(input:checked) { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.score-help { margin-bottom: 16px; } .score-help p { margin: 4px 0; }
+.stone-demo { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; padding: 10px 14px; border-radius: 12px; background: var(--felt); color: #f3ead7; width: fit-content; }
+.pile-demo { display: inline-flex; gap: 3px; align-items: center; } .pile-demo small { margin-left: 4px; }
+.now-playing { text-transform: uppercase; letter-spacing: .12em; font-size: .7rem; opacity: .8; }
+.login-gate { max-width: 620px; margin: 40px auto; text-align: center; } .login-gate .row { justify-content: center; }
 
 /* Conteo paso a paso en el centro de la mesa */
 .review { display: grid; gap: 6px; justify-items: center; max-width: 440px; }
@@ -347,4 +361,7 @@ button.link { background: none; border: 0; padding: 0; color: var(--accent); tex
 .curtain { max-width: 520px; margin: 0 auto; text-align: center; }
 .players-choice { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 12px; display: grid; gap: 4px; }
 .players-choice legend { font-weight: 600; padding: 0 4px; }
-@media (max-width: 560px) { .table-score { min-width: 70px; padding: 4px 6px; } .seat .avatar { width: 56px; height: 56px; } }
+@media (max-width: 560px) { .seat .avatar { width: 56px; height: 56px; } }
+.report { display: grid; gap: 12px; max-height: 60vh; overflow: auto; }
+.report article { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 12px; }
+.report h3 { margin: 0 0 4px; } .report ul { margin: 4px 0; padding-left: 18px; }

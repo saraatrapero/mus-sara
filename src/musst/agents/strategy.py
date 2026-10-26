@@ -43,6 +43,10 @@ ORDAGO_DESPERATE = 0.5
 """…o por desesperación: cuando el agente de marcador baja su umbral por debajo de este valor
 (vamos perdiendo y el rival está a punto de ganar), basta con superar ese umbral."""
 
+ORDAGO_LEADING = 0.85
+"""Yendo por delante en el marcador no hay prisa: solo se echa o se ve (acepta) un órdago con
+P(ganarlo) ≥ 0.85. Arriesgar la partida entera estando ganando es regalarla."""
+
 RAISE_ACCEPT = 0.7
 """Probabilidad supuesta de que quien envidó acepte una subida."""
 RAISE_ESCALATION_DECAY = 0.4
@@ -95,9 +99,14 @@ class StrategyAgent:
         bluff_rate = float(ctx.config.get("bluff_rate", 0.1))
         may_bluff = p >= BLUFF_P or ctx.rng.random() < bluff_rate
         ordago_threshold = ctx.estimate("marcador", "ordago_threshold", 0.55).value
-        ordago_ok = p_ord >= float(ctx.config.get("ordago_sure", ORDAGO_SURE)) or (
-            ordago_threshold < ORDAGO_DESPERATE and p_ord >= ordago_threshold
-        )
+        leading = obs.score[obs.team] > obs.score[1 - obs.team]
+        sure = float(ctx.config.get("ordago_sure", ORDAGO_SURE))
+        if leading:
+            ordago_ok = p_ord >= max(sure, ORDAGO_LEADING)
+        else:
+            ordago_ok = p_ord >= sure or (
+                ordago_threshold < ORDAGO_DESPERATE and p_ord >= ordago_threshold
+            )
         if "pass" in types:  # lance abierto
             add(PassAction(), p * (bonus + paso), 0.0)
             spec = obs.spec("bet")
@@ -131,6 +140,8 @@ class StrategyAgent:
         accept_action: Action = AcceptAction() if accept_type == "accept" else AcceptNoLoseAction()
         if bet.is_ordago:
             threshold = ctx.estimate("marcador", "ordago_threshold", 0.55).value
+            if leading:
+                threshold = max(threshold, ORDAGO_LEADING)
             if accept_type:
                 add(accept_action, (p - threshold) * game_value, game_value * 0.5, p_bluff=p_bluff)
             # Se compara contra rechazar (referencia 0): aceptar si P(ganar) supera el umbral

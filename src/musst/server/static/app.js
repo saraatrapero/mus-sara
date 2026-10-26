@@ -12,7 +12,7 @@ const $modalBody = document.getElementById("modal-body");
 
 // ------------------------------------------------------------------ ajustes
 const DEFAULT_SETTINGS = {
-  theme: "auto", text_size: 1, reduce_motion: false, sound: true, voice: true, speed: 1, table: "verde", card_back: "rayas",
+  theme: "auto", text_size: 1, reduce_motion: false, sound: true, voice: true, signals: true, speed: 1, table: "verde", card_back: "rayas",
 };
 const store = {
   get(key, fallback) {
@@ -239,6 +239,10 @@ function eventText(e, names) {
     default: return null;
   }
 }
+const LANCE_HINT = {
+  grande: "Gana la mano con las cartas más altas", chica: "Gana la mano con las cartas más bajas",
+  pares: "Solo juegan quienes llevan pares", juego: "Solo juegan quienes llevan 31 o más", punto: "Nadie tiene juego: gana quien más se acerque a 30",
+};
 const BUBBLE = {
   MusRequested: "MUS", MusCut: "CORTO", Passed: "PASO", BetPlaced: "ENVIDO", BetRaised: "REENVÍO",
   BetAccepted: "QUIERO", OrdagoAccepted: "QUIERO", BetRejected: "NO QUIERO", OrdagoDeclared: "ÓRDAGO",
@@ -317,9 +321,21 @@ const SOUND_OF = {
 
 // ------------------------------------------------------------------ navegación
 const views = { home, learn, arena, stats, settings: settingsView, game: () => renderGame(), tutorial, training, admin: adminView };
+const OPEN_VIEWS = new Set(["learn", "tutorial", "settings"]);
+function loginGate() {
+  $main.append(h(`<div class="page"><section class="panel stack login-gate">
+    <span class="kicker">MUS.ST</span><h1 class="page-title">Inicia sesión para jugar</h1>
+    <p>Con tu cuenta se guardan tus partidas y lo que la IA aprende de tu forma de jugar.${LOCAL && !cloud.cloudEnabled() ? " Las cuentas se guardan en este navegador; la primera que se crea es la de administración." : ""}</p>
+    <div class="row"><button class="btn primary" id="gate-login">Entrar o crear cuenta</button><button class="btn ghost" data-nav="tutorial">Ver el tutorial</button><button class="btn ghost" data-nav="learn">Aprender las reglas</button></div>
+  </section></div>`));
+  document.getElementById("gate-login").onclick = () => loginDialog();
+  loginDialog();
+}
 function go(name, ...args) {
   document.querySelectorAll(".topnav button").forEach((b) => b.setAttribute("aria-current", b.dataset.nav === name ? "page" : "false"));
   $main.innerHTML = "";
+  // Sin sesión no se juega: primero hay que entrar (las cuentas guardan lo que la IA aprende).
+  if (!user && !OPEN_VIEWS.has(name)) { loginGate(); return; }
   (views[name] || home)(...args);
   $main.focus({ preventScroll: true });
   window.scrollTo(0, 0);
@@ -346,6 +362,20 @@ function home() {
         </div>
       </div>
       <div class="hero-table" aria-hidden="true"><div class="hand">${["12O", "3C", "1E", "11B"].map((c) => cardHTML(c)).join("")}</div></div>
+    </section>
+    <section class="panel signals-choice" aria-label="Señas">
+      <div><span class="kicker">Antes de empezar</span><h2 class="card-title">¿Jugamos con señas?</h2>
+        <p class="muted">Con señas, cada jugador puede hacer a su compañero los gestos del reglamento (guiñar un ojo = la 31…) y solo los ve quien le está mirando.</p></div>
+      <div class="seg" role="radiogroup" aria-label="Señas">
+        <label><input type="radio" name="signals" value="1" ${settings.signals !== false ? "checked" : ""}> 👀 Con señas</label>
+        <label><input type="radio" name="signals" value="0" ${settings.signals === false ? "checked" : ""}> 🙈 Sin señas</label>
+      </div>
+    </section>
+    <section class="panel score-help" aria-label="Cómo se cuentan los tantos">
+      <span class="kicker">El conteo</span><h2 class="card-title">Cómo se cuentan los tantos</h2>
+      <p>Se cuenta con piedras en la mesa. En cada pareja, uno lleva las piedras sueltas (1 tanto cada una) y su compañero los amarracos (5 tantos cada uno).</p>
+      <p class="muted">Cuando el que cuenta junta 5 piedras, las devuelve al centro y su compañero coge una piedra de 5 delante de él. Así, con un vistazo a la mesa sabes cuánto lleva cada pareja.</p>
+      <div class="stone-demo" aria-hidden="true"><span class="pile-demo">${'<span class="stone"></span>'.repeat(3)}<small>3 sueltas</small></span><span class="pile-demo">${'<span class="stone five">5</span>'.repeat(2)}<small>2 de 5</small></span><strong>= 13 tantos</strong></div>
     </section>
     <section class="pillars" aria-label="Modos de juego">
       <div class="panel stack">
@@ -388,6 +418,7 @@ function home() {
       </div>
     </section>
   </div>`));
+  document.querySelectorAll('input[name="signals"]').forEach((r) => (r.onchange = () => { settings.signals = r.value === "1"; saveSettings(); }));
   document.getElementById("quick").onclick = () => startGame({ mode: "rapida", rivals: "medio", partner: "sencillo" });
   document.getElementById("vs-start").onclick = () => {
     const b = document.getElementById("vs-bot").value;
@@ -423,7 +454,7 @@ function home() {
 // ------------------------------------------------------------------ partida
 async function startGame(body, opts = {}) {
   try {
-    const data = await api("/api/games", { method: "POST", body });
+    const data = await api("/api/games", { method: "POST", body: { signals: settings.signals !== false, ...body } });
     current = {
       id: data.game_id, token: data.seat_token, tokens: data.seat_tokens || {}, obs: data.observation, seen: 0,
       help: Boolean(opts.help), discard: new Set(), amount: 2, busy: false, bubbles: {}, gestures: {},
@@ -498,6 +529,17 @@ function faceSVG(seat, { pos, lookPos, gesture = null, team = 0, bot = true }) {
 // Voz de los bots (síntesis de voz del navegador, en español).
 let voices = [];
 try { speechSynthesis.onvoiceschanged = () => { voices = speechSynthesis.getVoices(); }; voices = speechSynthesis.getVoices(); } catch { /* sin voz */ }
+// Cada jugador con su propia voz: voces distintas del sistema si las hay y, además, tono y
+// velocidad propios (así se distinguen aunque el navegador solo tenga una voz en español).
+const VOICE_TONE = [{ pitch: 1, rate: 1.05 }, { pitch: 0.55, rate: 0.92 }, { pitch: 1.45, rate: 1.12 }, { pitch: 0.85, rate: 1.0 }];
+function voiceFor(seat) {
+  const es = voices.filter((v) => v.lang && v.lang.toLowerCase().startsWith("es"))
+    .sort((a, b) => (b.lang === "es-ES") - (a.lang === "es-ES") || a.name.localeCompare(b.name));
+  if (!es.length) return null;
+  const me = current?.obs?.seat ?? 0;
+  const order = [me, (me + 1) % 4, (me + 2) % 4, (me + 3) % 4];
+  return es[order.indexOf(seat) % es.length];
+}
 function voiceOn() { return settings.voice && settings.sound && typeof speechSynthesis !== "undefined"; }
 // Habla y bocadillo van juntos: el bocadillo aparece cuando empieza la voz y se espera a que acabe.
 function speakWithBubble(text, seat, minMs = 900) {
@@ -509,9 +551,10 @@ function speakWithBubble(text, seat, minMs = 900) {
     try {
       speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text.replace(/[«»¡!¿?]/g, ""));
-      const es = voices.filter((v) => v.lang && v.lang.startsWith("es"));
-      if (es.length) u.voice = es[seat % es.length];
-      u.lang = "es-ES"; u.pitch = [1, 0.8, 1.2, 0.9][seat % 4]; u.rate = Math.min(1.4, 1.05 / Math.max(0.6, settings.speed));
+      const v = voiceFor(seat);
+      if (v) u.voice = v;
+      const tone = VOICE_TONE[seat % 4];
+      u.lang = v?.lang || "es-ES"; u.pitch = tone.pitch; u.rate = Math.min(1.5, tone.rate / Math.max(0.6, settings.speed));
       u.onstart = () => { started = true; show(); };
       u.onend = finish; u.onerror = finish;
       speechSynthesis.speak(u);
@@ -556,10 +599,26 @@ function listen() {
   rec.start();
 }
 
-// Amarracos (5 tantos) y piedras (1 tanto), como en la mesa real.
-function stonesHTML(points) {
-  const am = Math.floor(points / 5), st = points % 5;
-  return `<span class="am-row">${'<span class="am"></span>'.repeat(am)}</span><span class="st-row">${'<span class="st"></span>'.repeat(st)}</span>`;
+// Conteo con piedras, como en la mesa real: en cada pareja uno lleva las piedras sueltas
+// (1 tanto) y su compañero las de 5. Al juntar 5 sueltas, vuelven al centro y el compañero
+// coge una de 5. En mi pareja cuento yo las sueltas; en la rival, quien está a mi derecha.
+function pileFor(obs, seat) {
+  const team = obs.seats[seat].team, pts = obs.score[team];
+  const counter = team === obs.team ? obs.seat : (obs.seat + 1) % 4;
+  return seat === counter ? { n: pts % 5, five: false, counter } : { n: Math.floor(pts / 5), five: true, counter };
+}
+function pileHTML(obs, seat) {
+  const { n, five, counter } = pileFor(obs, seat);
+  const prev = current.piles?.[seat] ?? n;
+  const partner = (seat + 2) % 4;
+  // Si el compañero acaba de coger una de 5, mis 5 sueltas vuelven al centro.
+  const converted = !five && current.piles && pileFor(obs, partner).n > (current.piles[partner] ?? 0);
+  const fresh = Math.max(0, n - prev);
+  const stones = [...Array(n)].map((_, i) => `<span class="stone ${five ? "five" : ""} ${i >= n - fresh ? "arrive" : ""}">${five ? "5" : ""}</span>`).join("");
+  const ghosts = converted ? `<span class="ghosts">${'<span class="stone leave"></span>'.repeat(5)}</span>` : "";
+  const label = five ? `${n} de 5` : `${n} suelta${n === 1 ? "" : "s"}`;
+  return `<div class="pile" role="img" aria-label="${five ? `Piedras de 5 tantos: ${n} (${n * 5} tantos)` : `Piedras sueltas: ${n}`}" data-counter="${seat === counter}">
+    <span class="stones-row">${stones}${ghosts}</span><small>${label}</small></div>`;
 }
 
 // Conteo de la jugada, paso a paso, en el centro de la mesa.
@@ -626,8 +685,6 @@ function renderGame(bubbles = current?.bubbles || {}) {
       <span>${teamLabel(t)}</span>${left > 0 && left <= 4 ? '<span class="dentro">dentro</span>' : ""}
       <strong aria-label="${pts} tantos">${pts}</strong></div>`;
   };
-  const tableScore = (t, where) => `<div class="table-score ${where}" aria-label="${teamLabel(t)}: ${obs.score[t]} tantos">
-      <small>${teamLabel(t)}</small><div class="stones">${stonesHTML(obs.score[t])}</div><strong>${obs.score[t]}</strong></div>`;
   const seatHTML = (s) => {
     const pos = seatPosition(s.seat, me);
     const decl = (k) => (obs.declarations[k] && obs.declarations[k][String(s.seat)] !== undefined
@@ -651,6 +708,7 @@ function renderGame(bubbles = current?.bubbles || {}) {
       ${bubble}${avatar}
       <div class="seat-name">${esc(s.name)}${s.seat === me ? " (tú)" : ""}${s.level ? ` <span class="chip">${esc(s.level)}</span>` : ""}</div>
       <div class="seat-meta"><span class="chip">${s.team === 0 ? "◆ Pareja A" : "● Pareja B"}</span>${obs.mano === s.seat ? '<span class="chip mano">mano</span>' : ""}${decl("pares")}${decl("juego")}${status}${gaze}</div>
+      ${pileHTML(obs, s.seat)}
       ${pos === "bottom" && !review ? "" : cards}</div>`;
   };
   const bet = obs.current_bet;
@@ -673,7 +731,8 @@ function renderGame(bubbles = current?.bubbles || {}) {
     center = `<div><div class="lance-title">Reparto</div><p>${obs.dealer === me ? "Te toca repartir." : `Reparte ${esc(names[obs.dealer])}; la baraja está a su derecha.`} Es mano ${esc(names[obs.mano])}.</p>
       <button class="btn primary" id="deal-btn">${obs.dealer === me ? "Repartir" : "¿Repartimos? Sí"}</button></div>`;
   } else {
-    center = `<div><div class="lance-title">${esc(phaseName)}</div><div class="bet-info">${esc(betInfo)}</div>
+    const playing = LANCE[obs.phase] ? `<small class="now-playing">Se juega a</small>` : "";
+    center = `<div>${playing}<div class="lance-title">${esc(phaseName)}</div>${LANCE[obs.phase] ? `<div class="bet-info">${esc(LANCE_HINT[obs.phase] || "")}</div>` : ""}<div class="bet-info">${esc(betInfo)}</div>
       <div class="bet-info">${finished ? (obs.winner === myTeam ? "¡Habéis ganado!" : "Ha ganado la pareja rival") : myTurn ? "Te toca" : `Habla ${esc(names[obs.turn] ?? "")}`}</div></div>`;
   }
   const watching = (obs.gazes || []).map((g, s) => (g === me && s !== me ? s : null)).filter((s) => s != null);
@@ -717,7 +776,6 @@ function renderGame(bubbles = current?.bubbles || {}) {
       ${obs.seats.filter((s) => s.seat !== me).map(seatHTML).join("")}
       <div class="center">${center}</div>
       ${seatHTML(obs.seats[me])}
-      ${tableScore(myTeam, "mine")}${tableScore(1 - myTeam, "theirs")}
       ${finished ? "" : deck}
     </div>
     ${curtain}
@@ -734,6 +792,7 @@ function renderGame(bubbles = current?.bubbles || {}) {
     </div>
     <div id="help" class="help-panel" ${current.help ? "" : "hidden"}></div>
   </div>`));
+  current.piles = Object.fromEntries(obs.seats.map((s) => [s.seat, pileFor(obs, s.seat).n]));
   document.getElementById("mic-btn")?.addEventListener("click", listen);
   renderActions();
   document.getElementById("deal-btn")?.addEventListener("click", () => { if (current.review) current.review.done = true; dealCards(); });
@@ -844,9 +903,17 @@ async function animateTo(obs) {
       if (text) announce(text);
       if (e.kind === "LanceStarted" || e.kind === "DealerAssigned") current.bubbles = {};
       const human = obs.seats[e.actor]?.kind === "human";
-      if (bubble && e.round === prevRound && e.actor !== obs.seat) {
+      const declared = e.kind === "PairsDeclared" || e.kind === "GameDeclared";
+      if (e.kind === "LanceStarted" && e.round === prevRound) {
+        // Se juega este lance: la mesa lo muestra ya, sin esperar al final de la animación.
+        current.obs = { ...current.obs, phase: e.payload.lance, current_bet: null };
+        current.bubbles = {};
+        setStatus(`Se juega a ${LANCE[e.payload.lance]}`);
+        renderGame();
+        await sleep(700);
+      } else if (bubble && e.round === prevRound && (e.actor !== obs.seat || declared)) {
         // Lo que dice cada jugador se queda en su bocadillo hasta el siguiente lance.
-        const phrase = human ? myPhrase({ type: { BetPlaced: "bet", BetRaised: "raise", OrdagoDeclared: "ordago", BetAccepted: "accept", OrdagoAccepted: "accept", BetRejected: "reject", Passed: "pass", MusRequested: "mus", MusCut: "cut" }[e.kind] ?? "", amount: e.payload.amount }) || BUBBLE[e.kind] : talk(e);
+        const phrase = human && !declared ? myPhrase({ type: { BetPlaced: "bet", BetRaised: "raise", OrdagoDeclared: "ordago", BetAccepted: "accept", OrdagoAccepted: "accept", BetRejected: "reject", Passed: "pass", MusRequested: "mus", MusCut: "cut" }[e.kind] ?? "", amount: e.payload.amount }) || BUBBLE[e.kind] : talk(e);
         setStatus(text);
         await speakWithBubble(phrase, e.actor, e.kind === "PairsDeclared" || e.kind === "GameDeclared" ? 650 : 1100);
       } else if (e.kind === "HandsRevealed" && e.round === prevRound) {
@@ -1432,7 +1499,7 @@ async function adminView() {
         <tbody>${levels.map((l) => `<tr><td class="l">${l.lv}</td><td>${l.n}</td><td>${pct(l.rate)}</td></tr>`).join("")}</tbody></table></div>
       <div class="panel"><h2 class="card-title">Estilos detectados por la IA</h2><table class="data"><tbody>${Object.entries(styles).map(([s, n]) => `<tr><td class="l">${esc(s)}</td><td>${n}</td></tr>`).join("")}</tbody></table></div>
     </div>
-    <div class="panel stack"><div class="row" style="justify-content:space-between"><h2 class="card-title">Usuarios</h2><button class="btn primary" id="adm-new">Crear usuario</button></div>
+    <div class="panel stack"><div class="row" style="justify-content:space-between"><h2 class="card-title">Usuarios</h2><div class="row"><button class="btn" id="adm-report">📄 Informe privado de estilos</button><button class="btn primary" id="adm-new">Crear usuario</button></div></div>
       <div class="table-wrap"><table class="data" id="adm-users"><thead><tr><th class="l">Usuario</th><th>Rol</th><th>Alta</th><th>Última vez</th><th>Partidas</th><th>% victorias</th><th class="l">Estilo</th><th></th></tr></thead><tbody>
       ${users.map((u) => `<tr><td class="l"><button class="link" data-detail="${u.id}">${esc(u.username)}</button></td><td>${u.role}</td><td>${fmtDate(u.created_at)}</td><td>${fmtDate(u.last_seen)}</td>
         <td>${u.games.length}</td><td>${pct(u.games.length ? u.games.filter((g) => g.won).length / u.games.length : null)}</td><td class="l">${esc(u.model?.style || "—")}</td>
@@ -1446,9 +1513,66 @@ async function adminView() {
         <p class="muted">Si "ganó de verdad" se aleja del tramo, el bot corrige sus estimaciones en las siguientes partidas.</p>` : '<p class="muted">Sin datos todavía.</p>'}</div>
     </div>`;
   document.getElementById("adm-new").onclick = () => userDialog();
+  document.getElementById("adm-report").onclick = () => styleReport(users);
   el.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => userDialog(byUser[b.dataset.edit])));
   el.querySelectorAll("[data-del]").forEach((b) => (b.onclick = () => deleteDialog(byUser[b.dataset.del])));
   el.querySelectorAll("[data-detail]").forEach((b) => (b.onclick = () => userDetail(byUser[b.dataset.detail])));
+}
+// Informe privado (solo administración): cómo juega cada persona, en prosa, a partir de lo que
+// ha aprendido la IA. Se puede descargar o imprimir; no se publica en ningún sitio.
+function playerProfile(u) {
+  const m = u.model?.model || {};
+  const rates = m.rates || {};
+  const rate = (k) => { const r = rates[`${k}|*|*`]; return r && r[1] >= 3 ? r[0] / r[1] : null; };
+  const stake = (b) => { const x = m.stakes?.[`*|${b}`]; return x && x[1] ? x[0] / x[1] : null; };
+  const lines = [];
+  const say = (v, hi, lo, tHi, tLo, tMid) => { if (v == null) return; lines.push(v >= hi ? tHi : v <= lo ? tLo : tMid); };
+  say(rate("aggression"), 0.45, 0.2, "Toma la iniciativa: suele envidar cuando abre el lance.", "Rara vez abre envidando; prefiere pasar y esperar.", "Envida con una frecuencia normal cuando abre.");
+  say(rate("bet_with_weak"), 0.3, 0.08, "Se tira faroles a menudo: envida con manos flojas.", "Casi nunca farolea: si envida, suele llevar algo.", "Farolea de vez en cuando.");
+  say(rate("bet_with_strong"), 0.6, 0.3, "Con mano buena lo dice: envida casi siempre.", "Juega de tapado: con buenas cartas a menudo pasa para que le envíen.", "Con buena mano envida unas veces y otras se tapa.");
+  say(rate("acceptance_rate"), 0.6, 0.3, "Quiere muchos envites: le cuesta soltar.", "Suelta con facilidad: no quiere la mayoría de envites.", "Acepta envites con criterio.");
+  say(rate("accept_with_weak"), 0.35, 0.1, "Ve envites incluso con mano floja (se le puede sacar tantos envidando con buena mano).", "Con mano floja no quiere casi nunca.", null);
+  say(rate("raise_rate"), 0.3, 0.08, "Reenvida mucho: responde a los envites subiendo.", "Casi nunca sube un envite.", "Sube algún envite.");
+  say(rate("ordago_rate"), 0.08, 0.01, "Le gusta el órdago.", "Apenas echa órdagos.", "Echa algún órdago.");
+  say(rate("mus_rate"), 0.6, 0.3, "Pide mus a menudo, busca mejorar la mano.", "Corta el mus con frecuencia.", null);
+  const sf = stake("fuerte"), sw = stake("floja");
+  if (sf != null && sw != null) lines.push(sf > sw + 1 ? `Envida más fuerte con buena mano (${sf.toFixed(1)} piedras de media) que con mala (${sw.toFixed(1)}): el tamaño del envite le delata.` : `Envida parecido con buena y con mala mano (${sf.toFixed(1)} / ${sw.toFixed(1)} piedras): el tamaño no le delata.`);
+  if (m.drift_recent) lines.push("Ha cambiado de estilo en sus últimas partidas: es imprevisible.");
+  const lines2 = lines.filter(Boolean);
+  const advice = [];
+  if ((rate("bet_with_weak") ?? 0) >= 0.3) advice.push("quererle más envites, porque muchos son faroles");
+  if ((rate("acceptance_rate") ?? 1) <= 0.3) advice.push("envidarle a menudo: suele soltar");
+  if ((rate("accept_with_weak") ?? 0) >= 0.35) advice.push("envidarle fuerte con buena mano, porque paga");
+  if ((rate("bet_with_strong") ?? 1) <= 0.3) advice.push("desconfiar cuando pasa: puede ir de tapado");
+  const won = u.games.filter((g) => g.won).length;
+  return { name: u.username, style: u.model?.style || "sin datos aún", games: u.games.length, won, known: m.games ?? 0, lines: lines2, advice };
+}
+function styleReport(users) {
+  const profiles = users.map(playerProfile);
+  const date = new Date().toLocaleDateString();
+  const md = [`# Informe privado de estilos de juego · MUS.ST`, ``, `_${date} · solo para administración_`, ``,
+    ...profiles.flatMap((p) => [`## ${p.name} — ${p.style}`, ``, `Partidas: ${p.games} (${p.won} ganadas) · partidas que conoce la IA: ${p.known}`, ``,
+      ...(p.lines.length ? p.lines.map((l) => `- ${l}`) : ["- Aún no hay datos suficientes para describir su juego."]),
+      ...(p.advice.length ? [``, `**Cómo jugarle:** ${p.advice.join("; ")}.`] : []), ``])].join("\n");
+  openModal(`<h2 id="modal-title">Informe privado de estilos</h2>
+    <p class="muted">Solo lo ve la administración. Resume la estrategia de cada persona según lo que ha aprendido la IA.</p>
+    <div class="report">${profiles.map((p) => `<article><h3>${esc(p.name)} <span class="chip">${esc(p.style)}</span></h3>
+      <p class="muted">Partidas: ${p.games} (${p.won} ganadas) · conocidas por la IA: ${p.known}</p>
+      <ul>${p.lines.length ? p.lines.map((l) => `<li>${esc(l)}</li>`).join("") : "<li>Aún no hay datos suficientes para describir su juego.</li>"}</ul>
+      ${p.advice.length ? `<p><strong>Cómo jugarle:</strong> ${esc(p.advice.join("; "))}.</p>` : ""}</article>`).join("")}</div>
+    <div class="row"><button class="btn primary" id="rep-dl">Descargar (.md)</button><button class="btn" id="rep-print">Imprimir / PDF</button><button class="btn ghost" data-close>Cerrar</button></div>`);
+  document.getElementById("rep-dl").onclick = () => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([md], { type: "text/markdown" }));
+    a.download = `informe-estilos-${new Date().toISOString().slice(0, 10)}.md`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+  document.getElementById("rep-print").onclick = () => {
+    const w = window.open("", "_blank");
+    if (!w) { toast("Permite las ventanas emergentes para imprimir"); return; }
+    w.document.write(`<!doctype html><meta charset="utf-8"><title>Informe privado de estilos</title><body style="font-family:system-ui;max-width:720px;margin:24px auto">${document.querySelector(".report").outerHTML}</body>`);
+    w.document.close(); w.print();
+  };
 }
 function userDialog(u = null) {
   openModal(`<h2 id="modal-title">${u ? `Editar ${esc(u.username)}` : "Crear usuario"}</h2>
