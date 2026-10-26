@@ -22,7 +22,7 @@ Diseño completo: [design/06-agentes.md](design/06-agentes.md). Código: `src/mu
 | Descarte | Heurístico | Heurístico | Simulado (30 reposiciones por opción) |
 | Errores deliberados | 15 % | 30 % en decisiones ajustadas | Ninguno |
 | Faroles | 5 % | Deliberados, 10 % de las manos flojas | Deliberados, 7 % |
-| Órdago | Con mano muy fuerte | P(ganar) ≥ 0.8 o desesperación | P(ganar) ≥ 0.8 o desesperación |
+| Órdago | Con mano muy fuerte | P(ganar) ≥ 0.8 o desesperación; **yendo por delante, P ≥ 0.85** (también para ver uno) | P(ganar) ≥ 0.8 o desesperación; **yendo por delante, P ≥ 0.85** (también para ver uno) |
 | Señas | Si le mira cualquiera | Si le mira su compañero | Solo si le mira su compañero y ningún rival |
 | Aprende entre partidas | No | No | Sí: perfiles y autocrítica |
 
