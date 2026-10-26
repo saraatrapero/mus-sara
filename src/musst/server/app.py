@@ -67,6 +67,7 @@ class NewGame(BaseModel):
     seed: int | None = Field(default=None, ge=0, le=2**31)
     names: dict[str, str] = Field(default_factory=dict)
     avatar: str | None = Field(default=None, max_length=64)
+    signals: bool = True
 
 
 class JoinGame(BaseModel):
@@ -76,6 +77,10 @@ class JoinGame(BaseModel):
 
 class ActionRequest(BaseModel):
     action: dict[str, Any]
+
+
+class SignalRequest(BaseModel):
+    signal: str = Field(min_length=2, max_length=32)
 
 
 class WatchRequest(BaseModel):
@@ -193,6 +198,20 @@ def create_app(repo: Repository | None = None, dev_mode: bool = DEV_MODE) -> Fas
     ) -> dict[str, Any]:
         action_limiter.check(client_ip(request))
         return service.action(game_id, x_seat_token, body.action)
+
+    @app.post("/api/games/{game_id}/deal")
+    def deal(game_id: str, x_seat_token: Annotated[str | None, Header()] = None) -> dict[str, Any]:
+        return service.deal(game_id, x_seat_token)
+
+    @app.post("/api/games/{game_id}/tick")
+    def tick(game_id: str, x_seat_token: Annotated[str | None, Header()] = None) -> dict[str, Any]:
+        return service.tick(game_id, x_seat_token)
+
+    @app.post("/api/games/{game_id}/signal")
+    def signal(
+        game_id: str, body: SignalRequest, x_seat_token: Annotated[str | None, Header()] = None
+    ) -> dict[str, Any]:
+        return service.signal(game_id, x_seat_token, body.signal)
 
     @app.get("/api/games/{game_id}/help")
     def help_now(

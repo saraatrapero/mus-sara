@@ -111,6 +111,12 @@ class LocalBackend:
                 self._adopt(game_id, token)
                 if sub is None:
                     return 200, svc.get_game(game_id, token)
+                if sub == "deal" and method == "POST":
+                    return 200, svc.deal(game_id, token)
+                if sub == "tick" and method == "POST":
+                    return 200, svc.tick(game_id, token)
+                if sub == "signal" and method == "POST":
+                    return 200, svc.signal(game_id, token, str(body.get("signal", "")))
                 if sub == "action" and method == "POST":
                     return 200, svc.action(game_id, token, body.get("action") or {})
                 if sub == "help":

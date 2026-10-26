@@ -57,6 +57,15 @@ class SimpleBot(Bot):
         self.noise = noise
         self.bluff = bluff
 
+    def signal(self, observation: Observation) -> str | None:
+        """Descuidado: hace una seña en cuanto alguien le mira, sea su compañero o un rival."""
+        obs = observation
+        if not obs.available_signals or obs.signals_seen.get(obs.seat):
+            return None
+        if any(g == obs.seat for g in obs.gazes) and self.rng.random() < 0.5:
+            return self.rng.choice(list(obs.available_signals))
+        return None
+
     def decide(self, observation: Observation) -> Action:
         obs = observation
         types = obs.legal_types()

@@ -113,6 +113,7 @@ class MusService:
             int(seed) if seed is not None else None,
             names,
             body.get("avatar") or (user.avatar if user else None),
+            bool(body.get("signals", True)),
         )
         return {
             "game_id": session.id,
@@ -150,6 +151,24 @@ class MusService:
             self.manager.apply_human(session, seat, action)
         except (IllegalAction, ValueError) as exc:
             raise ApiError(422, f"Acción no válida: {exc}") from exc
+        return self.manager.observation(session, seat)
+
+    def deal(self, game_id: str, token: str | None) -> dict[str, Any]:
+        session, seat = self.seat_of(game_id, token)
+        self.manager.deal(session)
+        return self.manager.observation(session, seat)
+
+    def tick(self, game_id: str, token: str | None) -> dict[str, Any]:
+        session, seat = self.seat_of(game_id, token)
+        self.manager.tick(session)
+        return self.manager.observation(session, seat)
+
+    def signal(self, game_id: str, token: str | None, signal: str) -> dict[str, Any]:
+        session, seat = self.seat_of(game_id, token)
+        try:
+            self.manager.human_signal(session, seat, signal)
+        except IllegalAction as exc:
+            raise ApiError(422, str(exc)) from exc
         return self.manager.observation(session, seat)
 
     def help(self, game_id: str, token: str | None) -> dict[str, Any]:

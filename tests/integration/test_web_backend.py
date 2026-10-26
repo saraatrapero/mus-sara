@@ -11,6 +11,10 @@ def play_until_end(b, game_id, token, obs, limit=600):
     for _ in range(limit):
         if obs["finished"]:
             return obs
+        if obs.get("awaiting_deal"):
+            status, obs = b.handle("POST", f"/api/games/{game_id}/deal", None, token)
+            assert status == 200, obs
+            continue
         types = [a["type"] for a in obs["legal_actions"]]
         if "cut" in types:
             action = {"type": "cut"}
@@ -44,6 +48,10 @@ def test_partida_completa_con_perfil_y_estadisticas(backend):
     )
     assert status == 200
     obs = data["observation"]
+    assert obs["awaiting_deal"] and obs["hand"] == []  # «¿Repartimos?» antes de ver las cartas
+    status, obs = backend.handle(
+        "POST", f"/api/games/{data['game_id']}/deal", None, data["seat_token"]
+    )
     assert len(obs["hand"]) == 4
     assert "hands" not in obs and "deck" not in obs
     end = play_until_end(backend, data["game_id"], data["seat_token"], obs)
@@ -83,7 +91,10 @@ def test_la_partida_sobrevive_a_recargar_la_pagina(tmp_path):
     assert reloaded.user is not None and reloaded.user.username == "sara"
     status, obs = reloaded.handle("GET", f"/api/games/{gid}", None, token)
     assert status == 200
-    assert obs["hand"] == data["observation"]["hand"]
+    assert obs["awaiting_deal"]
+    status, obs = reloaded.handle("POST", f"/api/games/{gid}/deal", None, token)
+    first.handle("POST", f"/api/games/{gid}/deal", None, token)
+    assert obs["hand"] == first.handle("GET", f"/api/games/{gid}", None, token)[1]["hand"]
 
 
 def test_perfil_local_no_permite_login_con_contrasena(backend):

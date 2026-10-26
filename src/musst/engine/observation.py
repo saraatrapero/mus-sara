@@ -50,6 +50,12 @@ class Observation:
     revealed_hands: dict[int, tuple[Card, ...]] | None = None
     finished: bool = False
     winner: int | None = None
+    gazes: tuple[int | None, ...] = ()
+    """A quién mira cada asiento (público). Vacío si las señas están desactivadas."""
+    available_signals: tuple[str, ...] = ()
+    """Señas verdaderas que puedo hacer ahora."""
+    signals_seen: dict[int, tuple[str, ...]] = field(default_factory=dict)
+    """Señas de esta jugada que he visto (de otros asientos) o que he hecho yo."""
 
     @property
     def is_my_turn(self) -> bool:
@@ -107,6 +113,9 @@ class Observation:
             else {str(s): [c.code for c in h] for s, h in self.revealed_hands.items()},
             "finished": self.finished,
             "winner": self.winner,
+            "gazes": list(self.gazes),
+            "available_signals": list(self.available_signals),
+            "signals_seen": {str(s): list(v) for s, v in self.signals_seen.items()},
         }
 
     @classmethod
@@ -151,6 +160,9 @@ class Observation:
             else {int(s): tuple(Card.parse(c) for c in h) for s, h in revealed.items()},
             finished=data["finished"],
             winner=data["winner"],
+            gazes=tuple(data.get("gazes", ())),
+            available_signals=tuple(data.get("available_signals", ())),
+            signals_seen={int(s): tuple(v) for s, v in data.get("signals_seen", {}).items()},
         )
 
 
@@ -200,7 +212,20 @@ def build_observation(game: MusGame, seat: int, history_limit: int | None = None
         revealed_hands=revealed,
         finished=game.phase is Phase.GAME_OVER,
         winner=result.winner if result else None,
+        gazes=tuple(game.gaze) if game.config.signals_enabled else (),
+        available_signals=tuple(s.value for s in game.legal_signals(seat)),
+        signals_seen=_signals_seen(game, seat),
     )
+
+
+def _signals_seen(game: MusGame, seat: int) -> dict[int, tuple[str, ...]]:
+    seen: dict[int, list[str]] = {}
+    for e in game.events:
+        if e.round_no != game.round_no or not e.visible_to(seat):
+            continue
+        if e.kind in (EventKind.SIGNAL_SEEN, EventKind.SIGNAL_MADE):
+            seen.setdefault(e.payload["seat"], []).append(e.payload["signal"])
+    return {s: tuple(v) for s, v in seen.items()}
 
 
 def build_spectator_view(game: MusGame) -> dict[str, Any]:
@@ -217,6 +242,7 @@ def build_spectator_view(game: MusGame) -> dict[str, Any]:
         },
         "history": [e.to_dict() for e in game.events if e.visible_to(None)],
         "finished": game.finished,
+        "gazes": list(game.gaze) if game.config.signals_enabled else [],
     }
 
 

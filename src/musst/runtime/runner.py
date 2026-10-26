@@ -55,6 +55,8 @@ class MatchResult:
     errors: list[SeatError] = field(default_factory=list)
     decision_times: dict[int, list[float]] = field(default_factory=dict)
     actions: list[tuple[int, Action]] = field(default_factory=list)
+    signals: list[tuple[int, int, str]] = field(default_factory=list)
+    """(nº de acciones ya hechas, asiento, seña)."""
 
 
 class FallbackBot(Bot):
@@ -139,6 +141,8 @@ def play_game(
             except Exception as exc:  # acción malformada (tipo incorrecto, etc.)
                 raise BotFailure("illegal", f"{action!r}: {exc!r}") from exc
             match.actions.append((seat, action))
+            for s, sig in offer_signals(game, dict(enumerate(seats))):
+                match.signals.append((len(match.actions), s, sig))
         except BotFailure as failure:
             if _handle_failure(game, match, seats, seat, failure, mode):
                 break
@@ -160,6 +164,27 @@ def play_game(
         except Exception as exc:  # el aprendizaje de un bot no puede romper la partida
             log.warning("on_game_end falló en %s: %r", getattr(bot, "name", "?"), exc)
     return match
+
+
+def offer_signals(game: MusGame, bots: dict[int, Bot]) -> list[tuple[int, str]]:
+    """Pregunta a cada bot si quiere hacer una seña ahora. Devuelve las señas hechas.
+
+    Las señas son opcionales: una seña que el motor no admite se ignora (nunca rompe la partida).
+    """
+    made: list[tuple[int, str]] = []
+    if not game.config.signals_enabled or game.finished:
+        return made
+    for seat, bot in bots.items():
+        if not game.legal_signals(seat):
+            continue
+        try:
+            choice = bot.signal(build_observation(game, seat))
+            if choice:
+                game.signal(seat, choice)
+                made.append((seat, str(choice)))
+        except Exception as exc:
+            log.warning("Seña ignorada del asiento %s: %r", seat, exc)
+    return made
 
 
 def _handle_failure(

@@ -23,7 +23,7 @@ from musst.engine.game import IllegalAction, MusGame, partner_of, team_of
 from musst.engine.observation import build_observation, build_spectator_view
 from musst.learning.updater import Learner
 from musst.persistence.db import Repository, RepositoryModelStore
-from musst.runtime.runner import FallbackBot
+from musst.runtime.runner import FallbackBot, offer_signals
 
 log = logging.getLogger("musst.public.server")
 
@@ -56,6 +56,7 @@ class GameSession:
     invite_token: str | None = None
     learning: list[str] = field(default_factory=list)
     decisions: list[dict[str, Any]] = field(default_factory=list)  # solo modo desarrollo
+    dealt_round: int = 0  # última jugada repartida con permiso del jugador ("¿Repartimos?")
     lock: threading.Lock = field(default_factory=threading.Lock)
     last_activity: float = field(default_factory=time.time)
 
@@ -83,6 +84,24 @@ class GameSession:
         ]
 
 
+def replay_actions(game: MusGame, actions: list[dict[str, Any]]) -> int:
+    """Reproduce el registro de una partida (acciones, señas y pasos del reloj).
+
+    Devuelve la última jugada repartida con permiso del jugador.
+    """
+    dealt = 0
+    for item in actions:
+        if "action" in item:
+            game.apply(item["seat"], action_from_dict(item["action"]))
+        elif "signal" in item:
+            game.signal(item["seat"], item["signal"])
+        elif "tick" in item:
+            game.tick()
+        elif "deal" in item:
+            dealt = int(item["deal"])
+    return dealt
+
+
 class SessionManager:
     def __init__(self, repo: Repository) -> None:
         self.repo = repo
@@ -102,9 +121,10 @@ class SessionManager:
         seed: int | None = None,
         names: dict[str, str] | None = None,
         avatar: str | None = None,
+        signals: bool = True,
     ) -> tuple[GameSession, str]:
         """Crea una partida. El humano ocupa el asiento 0; su pareja, el 2."""
-        config = RulesConfig(target_points=target)
+        config = RulesConfig(target_points=target, signals_enabled=signals)
         game = MusGame(seed=seed, config=config)
         game_id = uuid.uuid4().hex[:12]
         token = secrets.token_urlsafe(24)
@@ -207,18 +227,61 @@ class SessionManager:
         with session.lock:
             if session.status not in ("PLAYING", "PAUSED"):
                 raise IllegalAction("La partida no está en juego")
+            if self.awaiting_deal(session):
+                raise IllegalAction("Primero hay que repartir")
             action = action_from_dict(data)  # ValueError si la forma es inválida
             session.game.apply(seat.index, action)  # IllegalAction si no es legal
             session.status = "PLAYING"
             session.actions.append({"seat": seat.index, "action": action_to_dict(action)})
             session.last_activity = time.time()
+            self._bot_signals(session)
             self.advance_bots(session)
+
+    def awaiting_deal(self, session: GameSession) -> bool:
+        """Antes de cada jugada se pregunta al jugador si se reparte (hay humanos en la mesa)."""
+        game = session.game
+        return (
+            not game.finished
+            and session.dealt_round < game.round_no
+            and any(s.kind == "human" for s in session.seats)
+        )
+
+    def deal(self, session: GameSession) -> None:
+        with session.lock:
+            if self.awaiting_deal(session):
+                session.dealt_round = session.game.round_no
+                session.actions.append({"deal": session.game.round_no})
+                self.advance_bots(session)
+
+    def tick(self, session: GameSession) -> None:
+        """Paso del reloj de la mesa: cambian las miradas y los bots pueden hacer señas."""
+        with session.lock:
+            game = session.game
+            if game.finished or not game.config.signals_enabled or self.awaiting_deal(session):
+                return
+            game.tick()
+            session.actions.append({"tick": 1})
+            self._bot_signals(session)
+            self._persist(session)
+
+    def human_signal(self, session: GameSession, seat: Seat, signal: str) -> None:
+        with session.lock:
+            session.game.signal(seat.index, signal)  # IllegalAction si no es verdadera o no toca
+            session.actions.append({"seat": seat.index, "signal": signal})
+            self._persist(session)
+
+    def _bot_signals(self, session: GameSession) -> None:
+        bots = {s.index: s.bot for s in session.seats if s.kind == "bot" and s.bot is not None}
+        for seat, sig in offer_signals(session.game, bots):
+            session.actions.append({"seat": seat, "signal": sig})
 
     def advance_bots(self, session: GameSession) -> None:
         game = session.game
         guard = 0
         while not game.finished and guard < 500:
             guard += 1
+            if self.awaiting_deal(session):
+                break
             turn = game.turn
             assert turn is not None
             seat = session.seats[turn]
@@ -235,6 +298,7 @@ class SessionManager:
                 action = seat.bot.decide(obs)
                 game.apply(turn, action)
             session.actions.append({"seat": turn, "action": action_to_dict(action)})
+            self._bot_signals(session)
             last = getattr(seat.bot, "last_decision", None)
             if isinstance(last, Decision):
                 session.decisions.append(
@@ -322,7 +386,12 @@ class SessionManager:
             invite=session.invite_token
             if seat.index == 0 and session.seats[2].token is None
             else None,
+            awaiting_deal=self.awaiting_deal(session),
         )
+        if obs["awaiting_deal"]:
+            obs["hand"] = []  # aún no se han repartido las cartas a la vista del jugador
+            obs["legal_actions"] = []
+            obs["available_signals"] = []
         if session.status == "FINISHED":
             obs["learning"] = session.learning
         return obs
@@ -387,8 +456,7 @@ class SessionManager:
         if data is None or data["status"] not in ("PLAYING", "PAUSED"):
             return None
         game = MusGame(seed=data["seed"], config=RulesConfig.from_dict(data["config"]))
-        for item in data["actions"]:
-            game.apply(item["seat"], action_from_dict(item["action"]))
+        dealt = replay_actions(game, data["actions"])
         seats = []
         for s in data["seats"]:
             seat = Seat(
@@ -403,6 +471,7 @@ class SessionManager:
         session = GameSession(
             game_id, data["mode"], game, seats, data["created_by"], "PAUSED", data["actions"]
         )
+        session.dealt_round = dealt
         for seat in seats:
             if seat.kind == "bot":
                 seat.bot = self._make_bot(seat.level or "medio", game.seed + seat.index)

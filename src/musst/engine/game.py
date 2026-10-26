@@ -33,6 +33,7 @@ from musst.engine.actions import (
 from musst.engine.cards import Card, shuffled_deck
 from musst.engine.config import RulesConfig
 from musst.engine.events import EventKind, GameEvent, Visibility
+from musst.engine.signals import Signal, truthful_signals
 
 NUM_SEATS = 4
 
@@ -136,12 +137,19 @@ class MusGame:
         self.teams_in: set[int] = set()
         self.dealer = self.rng.randrange(NUM_SEATS)
         self.mano = (self.dealer + 1) % NUM_SEATS
+        # Miradas y señas (FEM VIII). Generador aparte: activarlas no cambia el reparto.
+        self.gaze_rng = random.Random(self.seed * 7919 + 1)
+        self.gaze: list[int | None] = [None] * NUM_SEATS
+        self.gaze_timer = [0] * NUM_SEATS
+        self.ticks = 0
+        self.signals_made: dict[int, set[Signal]] = {s: set() for s in range(NUM_SEATS)}
         self._emit(
             EventKind.GAME_STARTED,
             None,
             {"seed_public": False, "target": self.config.target_points, "teams": [[0, 2], [1, 3]]},
         )
         self._start_round()
+        self._advance_time()
 
     # ------------------------------------------------------------------ utilidades
     def clone(self) -> MusGame:
@@ -194,6 +202,7 @@ class MusGame:
         self.mus_idx = 0
         self.pending_discards = {}
         self.discard_pile = []
+        self.signals_made = {s: set() for s in range(NUM_SEATS)}
         self.deck = shuffled_deck(self.rng)
         self.phase = Phase.MUS
         self._emit(EventKind.DEALER_ASSIGNED, None, {"dealer": self.dealer, "mano": self.mano})
@@ -326,6 +335,79 @@ class MusGame:
             self._on_discard(seat, action)
         else:
             self._on_lance_action(seat, action)
+        self._advance_time()
+        return self.events[start:]
+
+    # ------------------------------------------------------------------ miradas y señas
+    def tick(self) -> list[GameEvent]:
+        """Avanza el reloj de la mesa un paso (las miradas cambian). No es una acción de juego."""
+        start = len(self.events)
+        self._advance_time()
+        return self.events[start:]
+
+    def _advance_time(self) -> None:
+        if not self.config.signals_enabled or self.phase is Phase.GAME_OVER:
+            return
+        self.ticks += 1
+        cfg = self.config
+        for seat in range(NUM_SEATS):
+            self.gaze_timer[seat] -= 1
+            if self.gaze_timer[seat] > 0:
+                continue
+            self.gaze_timer[seat] = self.gaze_rng.randint(cfg.gaze_min_ticks, cfg.gaze_max_ticks)
+            w_partner, w_rivals, _w_table = cfg.gaze_weights
+            r = self.gaze_rng.random() * sum(cfg.gaze_weights)
+            if r < w_partner:
+                target: int | None = partner_of(seat)
+            elif r < w_partner + w_rivals:
+                target = (seat + self.gaze_rng.choice((1, 3))) % NUM_SEATS
+            else:
+                target = None
+            if target != self.gaze[seat]:
+                self.gaze[seat] = target
+                self._emit(EventKind.GAZE_CHANGED, seat, {"seat": seat, "target": target})
+
+    def legal_signals(self, seat: int) -> list[Signal]:
+        """Señas que ``seat`` puede hacer ahora: verdaderas (FEM VIII.4), tras cortar el mus,
+        y cada una una sola vez por jugada."""
+        if not self.config.signals_enabled or self.phase not in LANCES:
+            return []
+        valid = truthful_signals(self.hands[seat], self.config.eight_kings)
+        return sorted(valid - self.signals_made[seat], key=lambda s: s.value)
+
+    def watchers(self, seat: int) -> list[int]:
+        """Quién está mirando a ``seat`` en este momento."""
+        return [s for s in range(NUM_SEATS) if s != seat and self.gaze[s] == seat]
+
+    def signal(self, seat: int, signal: Signal | str) -> list[GameEvent]:
+        """Hace una seña. Solo la ven quienes miran a ``seat`` en ese instante; quien la hace
+        sabe quién le miraba. Lanza :class:`IllegalAction` si no es verdadera o no toca."""
+        try:
+            sig = Signal(signal)
+        except ValueError as exc:
+            raise IllegalAction(f"Seña desconocida: {signal}") from exc
+        if not 0 <= seat < NUM_SEATS:
+            raise IllegalAction("Asiento inválido")
+        if sig not in self.legal_signals(seat):
+            raise IllegalAction("Esa seña no es posible ahora (solo señas verdaderas, tras cortar)")
+        start = len(self.events)
+        self.signals_made[seat].add(sig)
+        seen_by = self.watchers(seat)
+        self._emit(
+            EventKind.SIGNAL_MADE,
+            seat,
+            {"seat": seat, "signal": sig.value, "seen_by": seen_by},
+            Visibility.PRIVATE,
+            (seat,),
+        )
+        if seen_by:
+            self._emit(
+                EventKind.SIGNAL_SEEN,
+                seat,
+                {"seat": seat, "signal": sig.value},
+                Visibility.PRIVATE,
+                tuple(seen_by),
+            )
         return self.events[start:]
 
     # --- mus

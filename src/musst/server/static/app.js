@@ -134,14 +134,53 @@ function cardLabel(code) {
   const extra = rank === 3 ? " (cuenta como rey)" : rank === 2 ? " (cuenta como as)" : "";
   return `${names[rank]} de ${SUITS[suit].toLowerCase()}${extra}`;
 }
-function cardHTML(code, { small = false, button = false, pressed = false } = {}) {
+// Naipe español dibujado en SVG: índice grande en las esquinas, pintas en el marco (huecos
+// según el palo, como en la baraja española) y figuras reconocibles.
+const PINTAS = { O: 0, C: 1, E: 2, B: 3 };
+const SUIT_COLOR = { O: "#b8860b", C: "#b8323f", E: "#2f5d8a", B: "#3f6b2a" };
+const PIP_LAYOUT = {
+  1: [[30, 46, 2.2]], 2: [[30, 28], [30, 64]], 3: [[30, 24], [30, 46], [30, 68]],
+  4: [[21, 28], [39, 28], [21, 64], [39, 64]], 5: [[21, 26], [39, 26], [30, 46], [21, 66], [39, 66]],
+  6: [[21, 24], [39, 24], [21, 46], [39, 46], [21, 68], [39, 68]],
+  7: [[21, 22], [39, 22], [30, 35], [21, 48], [39, 48], [21, 70], [39, 70]],
+};
+const FIGURE = { 10: "SOTA", 11: "CABALLO", 12: "REY" };
+function suitUse(suit, x, y, scale = 1) {
+  const s = 11 * scale;
+  return `<svg x="${x - s / 2}" y="${y - s / 2}" width="${s}" height="${s}" viewBox="0 0 32 32">${SUIT_SVG[suit].replace(/^<svg[^>]*>|<\/svg>$/g, "")}</svg>`;
+}
+function figureSVG(rank, suit) {
+  const c = SUIT_COLOR[suit];
+  const crown = rank === 12 ? `<path d="M22 26l3-5 3 4 2-5 2 5 3-4 3 5z" fill="#d4a72c" stroke="#7a5a10" stroke-width=".8"/>` : "";
+  const hat = rank === 10 ? `<path d="M23 27q7-7 14 0z" fill="${c}"/>` : "";
+  const horse = rank === 11 ? `<path d="M14 70q4-12 16-12t14 6l3 8h-6l-2-4h-16l-3 4z" fill="#8a5a2b" stroke="#4a2f14" stroke-width=".8"/>` : "";
+  return `<rect x="10" y="15" width="40" height="62" rx="3" fill="#fbf6ea" stroke="${c}" stroke-width="1.2"/>
+    ${horse}${crown}${hat}
+    <circle cx="30" cy="${rank === 11 ? 33 : 32}" r="5" fill="#f1d3b0" stroke="#7a5a3a" stroke-width=".7"/>
+    <path d="M22 ${rank === 11 ? 58 : 66}l2-20h12l2 20z" fill="${c}" opacity=".85"/>
+    ${suitUse(suit, 38, 48, 1.15)}`;
+}
+function cardFace(code) {
   const { rank, suit } = parseCard(code);
+  const c = SUIT_COLOR[suit];
+  const gaps = PINTAS[suit];
+  const frame = gaps === 0 ? `<rect x="3" y="3" width="54" height="84" rx="4" fill="none" stroke="${c}" stroke-width="1.4"/>`
+    : `<path d="${[...Array(gaps + 1)].map((_, i) => `M${4 + i * (52 / (gaps + 1)) + (i ? 3 : 0)} 3h${52 / (gaps + 1) - 3}`).join("")}" stroke="${c}" stroke-width="1.4"/>
+       <path d="${[...Array(gaps + 1)].map((_, i) => `M${4 + i * (52 / (gaps + 1)) + (i ? 3 : 0)} 87h${52 / (gaps + 1) - 3}`).join("")}" stroke="${c}" stroke-width="1.4"/>
+       <path d="M3 6v78M57 6v78" stroke="${c}" stroke-width="1.4"/>`;
+  const pip = rank <= 3 ? 1.7 : rank <= 5 ? 1.45 : 1.25;
+  const body = FIGURE[rank] ? figureSVG(rank, suit) : PIP_LAYOUT[rank].map(([x, y, k]) => suitUse(suit, x, y, k ? k * 1.4 : pip)).join("");
+  const idx = `<text x="7" y="15" font-family="Georgia,serif" font-weight="700" font-size="12" fill="${c}">${rank}</text>`;
+  const idx2 = `<text x="53" y="80" font-family="Georgia,serif" font-weight="700" font-size="12" fill="${c}" text-anchor="end">${rank}</text>`;
+  const fig = FIGURE[rank] ? `<text x="30" y="85" font-size="5.5" text-anchor="middle" fill="#5d625b" letter-spacing=".5">${FIGURE[rank]}</text>` : "";
+  return `<svg class="face" viewBox="0 0 60 90" aria-hidden="true"><rect width="60" height="90" rx="5" fill="#fffdf6"/>${frame}${body}${idx}${idx2}${fig}</svg>`;
+}
+function cardHTML(code, { small = false, button = false, pressed = false } = {}) {
+  const { rank } = parseCard(code);
   const tag = button ? "button" : "div";
   const equiv = rank === 3 ? '<span class="equiv">=R</span>' : rank === 2 ? '<span class="equiv">=A</span>' : "";
   const attrs = button ? ` type="button" data-card="${code}" aria-pressed="${pressed}"` : ' role="img"';
-  return `<${tag} class="card${small ? " small" : ""}"${attrs} aria-label="${cardLabel(code)}">
-    <span class="rank">${RANK_LABEL[rank] ?? rank}</span><span class="suit">${SUIT_SVG[suit]}</span>
-    <span class="suit-name">${SUITS[suit]}</span>${equiv}</${tag}>`;
+  return `<${tag} class="card${small ? " small" : ""}"${attrs} aria-label="${cardLabel(code)}">${cardFace(code)}${equiv}</${tag}>`;
 }
 
 // ------------------------------------------------------------------ textos de eventos
@@ -177,7 +216,90 @@ function eventText(e, names) {
 const BUBBLE = {
   MusRequested: "MUS", MusCut: "CORTO", Passed: "PASO", BetPlaced: "ENVIDO", BetRaised: "REENVÍO",
   BetAccepted: "QUIERO", OrdagoAccepted: "QUIERO", BetRejected: "NO QUIERO", OrdagoDeclared: "ÓRDAGO",
+  PairsDeclared: "PARES", GameDeclared: "JUEGO",
 };
+// Lo que dicen los bots en la mesa (varía para que no suene a máquina).
+const TALK = {
+  MusRequested: ["Mus", "Mus, que estas no valen", "Dame mus"],
+  MusCut: ["No hay mus", "Corto", "Aquí no hay mus"],
+  Passed: ["Paso", "Paso", "Paso, a ver qué decís"],
+  BetPlaced: (p) => (p.amount === 2 ? ["Envido", "Dos a " + LANCE[p.lance].toLowerCase(), "Envido, ¿qué hacéis?"] : [`Envido ${p.amount}`, `${p.amount} a ${LANCE[p.lance].toLowerCase()}`]),
+  BetRaised: (p) => [`${p.amount} más`, `Subo ${p.amount}`, `Y ${p.amount} más`],
+  OrdagoDeclared: () => ["¡ÓRDAGO!", "¡Órdago a " + "la mesa!"],
+  BetAccepted: ["Quiero", "Lo quiero", "Venga, quiero"],
+  OrdagoAccepted: ["¡Quiero!", "¡Lo veo!"],
+  BetRejected: ["No quiero", "Para vosotros", "No, no quiero"],
+  PairsDeclared: (p) => [p.has ? "Pares sí" : "Pares no"],
+  GameDeclared: (p) => [p.has ? "Juego sí" : "Juego no"],
+};
+function talk(e) {
+  const t = TALK[e.kind];
+  const opts = typeof t === "function" ? t(e.payload || {}) : t;
+  if (!opts) return BUBBLE[e.kind];
+  return opts[(e.seq * 7 + (e.actor ?? 0)) % opts.length];
+}
+const BANTER_WIN = ["¡Esa era nuestra!", "Buena jugada, compañero", "Así se juega"];
+const BANTER_LOSE = ["La próxima es nuestra", "Qué cartas más malas…", "Uf, no hubo suerte"];
+
+// Señas oficiales (FEM VIII.2): gesto y significado.
+const SIGNALS = {
+  dos_reyes: ["Morderse el labio inferior", "dos reyes"], dos_ases: ["Sacar la lengua de frente", "dos ases"],
+  pares: ["Girar la cabeza a un lado", "pares"], medias_reyes: ["Labios cerrados hacia un lado", "medias de reyes"],
+  medias_ases: ["Sacar la lengua hacia un lado", "medias de ases"], medias: ["Labios cerrados hacia un lado", "medias"],
+  duples: ["Levantar las cejas", "duples"], juego: ["Labios cerrados hacia afuera", "juego"],
+  treinta_y_una: ["Guiñar un ojo", "la 31"], treinta: ["Alzar los dos hombros", "30 de punto"],
+  veintinueve: ["Alzar un hombro", "29 de punto"], ciego: ["Cerrar los dos ojos", "ciego (nada)"],
+};
+
+// Resumen de la jugada: por qué se ha sumado cada tanto.
+function evalHand(codes) {
+  const cards = codes.map(parseCard).map(({ rank, suit }) => ({ rank: rank === 3 ? 12 : rank === 2 ? 1 : rank, suit }));
+  const counts = {};
+  cards.forEach((c) => { counts[c.rank] = (counts[c.rank] || 0) + 1; });
+  const groups = Object.entries(counts).filter(([, n]) => n >= 2).map(([r, n]) => [Number(r), n]);
+  const rankName = { 1: "ases", 4: "cuatros", 5: "cincos", 6: "seises", 7: "sietes", 10: "sotas", 11: "caballos", 12: "reyes" };
+  let pares = "sin pares";
+  if (groups.length === 2 || groups.some(([, n]) => n === 4)) pares = "duples";
+  else if (groups.some(([, n]) => n === 3)) pares = `medias de ${rankName[groups[0][0]]}`;
+  else if (groups.length === 1) pares = `par de ${rankName[groups[0][0]]}`;
+  const total = cards.reduce((t, c) => t + (c.rank >= 10 ? 10 : c.rank), 0);
+  return { pares, total };
+}
+function roundSummary(obs, round) {
+  const names = obs.seats.map((s) => s.name);
+  const team = (t) => (t === obs.team ? "tu pareja" : "la pareja rival");
+  const ev = obs.history.filter((e) => e.round === round);
+  const hands = ev.find((e) => e.kind === "HandsRevealed")?.payload.hands;
+  const lines = [];
+  const winners = {};
+  ev.filter((e) => e.kind === "LanceResolved").forEach((e) => { winners[e.payload.lance] = e.payload.winner_seat; });
+  for (const e of ev.filter((x) => x.kind === "PointsAwarded")) {
+    const p = e.payload;
+    const w = winners[p.lance];
+    const who = w != null ? names[w] : team(p.team);
+    const lance = LANCE[p.lance] ?? p.lance;
+    let why;
+    switch (p.concept) {
+      case "paso": why = `${lance} en paso: 1 tanto a quien tiene la mejor ${lance.toLowerCase()} (${who}).`; break;
+      case "envite": why = `${lance}: envite de ${p.points} querido; lo gana ${who}.`; break;
+      case "negada": why = `${lance}: no quisieron el envite; 1 tanto en el acto para ${team(p.team)}.`; break;
+      case "envite_no_querido": why = `${lance}: no quisieron el reenvite; ${p.points} tantos en el acto (la apuesta anterior).`; break;
+      case "pares": {
+        const detail = hands ? [p.team, p.team + 2].map((s) => `${names[s]}: ${evalHand(hands[String(s)]).pares}`).join(", ") : "";
+        why = `Pares de ${team(p.team)} (par 1, medias 2, duples 3 por jugador): ${p.points}. ${detail}`; break;
+      }
+      case "juego": {
+        const detail = hands ? [p.team, p.team + 2].map((s) => `${names[s]}: ${evalHand(hands[String(s)]).total}`).join(", ") : "";
+        why = `Juego de ${team(p.team)} (la 31 vale 3, el resto 2 por jugador): ${p.points}. ${detail}`; break;
+      }
+      case "punto": why = `Punto: 1 tanto para ${who}.`; break;
+      default: why = `${lance}: ${p.points} (${p.concept}).`;
+    }
+    lines.push({ team: p.team, points: p.points, why });
+  }
+  const score = ev.filter((e) => e.kind === "RoundFinished").pop()?.payload.score;
+  return { lines, score, hands };
+}
 const SOUND_OF = {
   MusCut: "cut", BetPlaced: "bet", BetRaised: "bet", BetAccepted: "accept", OrdagoAccepted: "accept",
   BetRejected: "reject", OrdagoDeclared: "ordago", PointsAwarded: "points", GameFinished: "end", DealerAssigned: "deal",
@@ -346,16 +468,37 @@ function renderGame(bubbles = {}) {
     const avatar = s.kind === "bot" ? "🤖" : esc(s.avatar || "🧑");
     const bubble = bubbles[s.seat] ? `<span class="bubble ${bubbles[s.seat] === "ÓRDAGO" ? "ordago" : ""}">${bubbles[s.seat]}</span>` : "";
     const status = s.waiting ? '<span class="chip">esperando…</span>' : !s.connected ? '<span class="chip">desconectado</span>' : "";
-    return `<div class="seat ${pos} ${obs.turn === s.seat ? "turn" : ""}" style="--team-color:var(${s.team === 0 ? "--team-a" : "--team-b"})">
-      ${bubble}<div class="avatar" aria-hidden="true">${avatar}</div>
+    const target = obs.gazes && obs.gazes.length ? obs.gazes[s.seat] : undefined;
+    const lookPos = target == null ? "mesa" : seatPosition(target, me);
+    const gaze = target === undefined ? "" : `<span class="chip gaze ${target === me && s.seat !== me ? "on-me" : ""}" title="Hacia dónde mira">👀 ${target == null ? "la mesa" : target === me ? (s.seat === me ? "" : "te mira") : esc(names[target])}</span>`;
+    return `<div class="seat ${pos} ${obs.turn === s.seat && !obs.awaiting_deal ? "turn" : ""}" style="--team-color:var(${s.team === 0 ? "--team-a" : "--team-b"})">
+      ${bubble}<div class="avatar look-${pos}-${lookPos}" aria-hidden="true">${avatar}</div>
       <div class="seat-name">${esc(s.name)}${s.seat === me ? " (tú)" : ""}${s.level ? ` <span class="chip">${esc(s.level)}</span>` : ""}</div>
-      <div class="seat-meta"><span class="chip">${s.team === 0 ? "◆ Pareja A" : "● Pareja B"}</span>${obs.mano === s.seat ? '<span class="chip mano">mano</span>' : ""}${decl("pares")}${decl("juego")}${status}</div>
+      <div class="seat-meta"><span class="chip">${s.team === 0 ? "◆ Pareja A" : "● Pareja B"}</span>${obs.mano === s.seat ? '<span class="chip mano">mano</span>' : ""}${decl("pares")}${decl("juego")}${status}${gaze}</div>
       ${pos === "bottom" ? "" : cards}</div>`;
   };
   const bet = obs.current_bet;
   const betInfo = bet ? (bet.is_ordago ? `Órdago de la pareja ${bet.bettor_team === 0 ? "A" : "B"}` : `En juego: ${bet.stake} tantos`) : "";
   const finished = obs.finished;
-  const myTurn = obs.turn === me && !finished;
+  const myTurn = obs.turn === me && !finished && !obs.awaiting_deal;
+  const dealerPos = seatPosition(obs.dealer, me);
+  const deck = `<div class="deck deck-${dealerPos}" aria-label="Baraja, a la derecha de ${esc(names[obs.dealer])} (reparte)" role="img">
+    ${'<span class="back"></span>'.repeat(4)}<small>Reparte ${esc(names[obs.dealer])}</small></div>`;
+  const prev = obs.awaiting_deal && obs.round > 1 ? roundSummary(obs, obs.round - 1) : null;
+  const dealPanel = obs.awaiting_deal ? `<div class="deal-panel panel stack" role="region" aria-label="Antes de repartir">
+      ${prev ? `<h2 class="card-title">Resumen de la jugada ${obs.round - 1}</h2>
+        <ul class="round-points">${prev.lines.map((l) => `<li class="${l.team === myTeam ? "mine" : "theirs"}"><strong>+${l.points}</strong> ${esc(l.why)}</li>`).join("") || "<li>Nadie sumó tantos.</li>"}</ul>
+        ${prev.hands ? `<div class="shown-hands">${obs.seats.map((s) => `<div><small>${esc(s.name)}</small><div class="hand">${prev.hands[String(s.seat)].map((c) => cardHTML(c, { small: true })).join("")}</div></div>`).join("")}</div>` : ""}
+        ${prev.score ? `<p><strong>Marcador:</strong> tu pareja ${prev.score[myTeam]} – ${prev.score[1 - myTeam]} rivales (se gana a ${obs.target}).</p>` : ""}` : ""}
+      <p>${obs.dealer === me ? "Te toca repartir." : `Reparte ${esc(names[obs.dealer])}; la baraja está a su derecha.`} Es mano ${esc(names[obs.mano])}.</p>
+      <button class="btn primary" id="deal-btn">${obs.dealer === me ? "Repartir" : "¿Repartimos? Sí"}</button></div>` : "";
+  const watching = (obs.gazes || []).map((g, s) => (g === me && s !== me ? s : null)).filter((s) => s != null);
+  const seen = Object.entries(obs.signals_seen || {}).filter(([s]) => Number(s) !== me);
+  const signalPanel = (obs.available_signals || []).length || seen.length ? `<div class="signals panel" role="region" aria-label="Señas">
+      ${seen.length ? `<p class="seen">${seen.map(([s, list]) => `<strong>${esc(names[s])}</strong> ${Number(s) === obs.partner ? "(compañero)" : "(rival)"} ha hecho seña: ${list.map((x) => esc(SIGNALS[x]?.[1] ?? x)).join(", ")}`).join("<br>")}</p>` : ""}
+      ${(obs.available_signals || []).length ? `<p class="muted">Seña (solo la verán quienes te miren ahora): ${watching.length ? watching.map((s) => `${esc(names[s])}${s === obs.partner ? " ✔" : " ⚠ rival"}`).join(", ") : "nadie te mira"}</p>
+        <div class="row">${obs.available_signals.map((x) => `<button class="btn small-btn" data-signal="${x}" title="${esc(SIGNALS[x]?.[0] ?? "")}">${esc(SIGNALS[x]?.[0] ?? x)} · <em>${esc(SIGNALS[x]?.[1] ?? "")}</em></button>`).join("")}</div>` : ""}
+    </div>` : "";
   $main.innerHTML = "";
   $main.append(h(`
   <div class="game">
@@ -367,13 +510,16 @@ function renderGame(bubbles = {}) {
     ${obs.invite ? `<div class="invite">Invita a tu compañero: comparte este enlace <code>${location.origin}${location.pathname}#join/${obs.game_id}/${obs.invite}</code></div>` : ""}
     <div class="table" role="region" aria-label="Mesa de Mus">
       ${obs.seats.filter((s) => s.seat !== me).map(seatHTML).join("")}
-      <div class="center"><div><div class="lance-title">${esc(phaseName)}</div><div class="bet-info">${esc(betInfo)}</div>
-        <div class="bet-info">${finished ? (obs.winner === myTeam ? "¡Habéis ganado!" : "Ha ganado la pareja rival") : myTurn ? "Te toca" : `Habla ${esc(names[obs.turn] ?? "")}`}</div></div></div>
+      <div class="center"><div><div class="lance-title">${obs.awaiting_deal ? "Reparto" : esc(phaseName)}</div><div class="bet-info">${esc(betInfo)}</div>
+        <div class="bet-info">${finished ? (obs.winner === myTeam ? "¡Habéis ganado!" : "Ha ganado la pareja rival") : obs.awaiting_deal ? "Esperando para repartir" : myTurn ? "Te toca" : `Habla ${esc(names[obs.turn] ?? "")}`}</div></div></div>
       ${seatHTML(obs.seats[me])}
+      ${finished ? "" : deck}
     </div>
+    ${dealPanel}
     <div class="hand" id="my-hand" aria-label="Tus cartas">${obs.hand.map((c) => cardHTML(c, { button: obs.phase === "discard" && myTurn, pressed: current.discard.has(c) })).join("")}</div>
     <div class="status-line" id="status"></div>
     <div class="actions" id="actions" role="group" aria-label="Acciones disponibles"></div>
+    ${signalPanel}
     <div class="row" style="justify-content:center">
       <button class="btn ghost" id="help-btn" aria-expanded="${current.help}">? ¿Qué puedo hacer?</button>
       ${finished ? '<button class="btn primary" id="summary-btn">Ver resumen</button>' : ""}
@@ -382,6 +528,9 @@ function renderGame(bubbles = {}) {
     <div id="help" class="help-panel" ${current.help ? "" : "hidden"}></div>
   </div>`));
   renderActions();
+  document.getElementById("deal-btn")?.addEventListener("click", dealCards);
+  document.querySelectorAll("[data-signal]").forEach((b) => (b.onclick = () => makeSignal(b.dataset.signal)));
+  scheduleTick();
   document.getElementById("help-btn").onclick = () => { current.help = !current.help; renderGame(); };
   document.getElementById("log-btn").onclick = () => showLog();
   if (finished) document.getElementById("summary-btn").onclick = () => showSummary();
@@ -400,7 +549,7 @@ function renderActions() {
   const $a = document.getElementById("actions");
   if (!$a) return;
   $a.innerHTML = "";
-  if (obs.finished || obs.turn !== obs.seat) return;
+  if (obs.finished || obs.turn !== obs.seat || obs.awaiting_deal) return;
   const specs = Object.fromEntries(obs.legal_actions.map((s) => [s.type, s]));
   const add = (label, cls, action, key) => {
     const b = document.createElement("button");
@@ -477,11 +626,26 @@ async function animateTo(obs) {
     if (text) announce(text);
     if (bubble && e.round === prevRound && e.actor !== obs.seat) {
       setStatus(text);
-      renderGame({ [e.actor]: bubble });
-      await sleep(420);
+      renderGame({ [e.actor]: talk(e) });
+      await sleep(e.kind === "PairsDeclared" || e.kind === "GameDeclared" ? 700 : 1300);
     } else if (e.kind === "HandsRevealed" && e.round === prevRound) {
       setStatus("Se enseñan las cartas");
-      await sleep(250);
+      current.obs = { ...current.obs, revealed_hands: e.payload.hands };
+      renderGame();
+      await sleep(1800);
+    } else if (e.kind === "SignalSeen" || (e.kind === "SignalMade" && e.actor !== obs.seat)) {
+      const from = e.payload.seat;
+      toast(`👁 Has visto a ${names[from]} ${SIGNALS[e.payload.signal]?.[0]?.toLowerCase() ?? "hacer una seña"}: ${SIGNALS[e.payload.signal]?.[1] ?? ""}`);
+    } else if (e.kind === "RoundFinished" && e.round === prevRound) {
+      const lastPts = obs.history.filter((x) => x.round === prevRound && x.kind === "PointsAwarded");
+      const mine = lastPts.filter((x) => x.payload.team === obs.team).reduce((t, x) => t + x.payload.points, 0);
+      const theirs = lastPts.filter((x) => x.payload.team !== obs.team).reduce((t, x) => t + x.payload.points, 0);
+      const bot = obs.seats.find((s) => s.kind === "bot" && s.team !== obs.team) || obs.seats.find((s) => s.kind === "bot");
+      if (bot) {
+        const pool = (bot.team === obs.team ? mine >= theirs : theirs > mine) ? BANTER_WIN : BANTER_LOSE;
+        renderGame({ [bot.seat]: pool[e.seq % pool.length] });
+        await sleep(1200);
+      }
     }
   }
   current.seen = maxSeq(obs);
@@ -491,6 +655,74 @@ async function animateTo(obs) {
   if (last) setStatus(`Fin de la jugada: ${last.payload.score[0]} – ${last.payload.score[1]}`);
   if (obs.finished) { store.set("musst.current", null); setTimeout(showSummary, 600); }
 }
+// Reparto: se pregunta antes y se ve cómo van saliendo las cartas de la baraja, de una en
+// una y en sentido antihorario empezando por el mano (FEM III.2).
+async function dealCards() {
+  if (current.busy) return;
+  current.busy = true;
+  try {
+    const obs = await api(`/api/games/${current.id}/deal`, { method: "POST", token: current.token });
+    play("deal");
+    await animateDeal(obs);
+    current.busy = false;
+    await animateTo(obs);
+  } catch (err) { toast(err.message); } finally { current.busy = false; }
+}
+async function animateDeal(obs) {
+  const table = document.querySelector(".table");
+  const deck = document.querySelector(".deck");
+  if (!table || !deck || settings.reduce_motion) return;
+  const me = obs.seat;
+  const from = deck.getBoundingClientRect();
+  const origin = table.getBoundingClientRect();
+  const order = [0, 1, 2, 3].map((i) => (obs.mano + i) % 4);
+  for (let round = 0; round < 4; round += 1) {
+    for (const seat of order) {
+      const target = document.querySelector(`.seat.${seatPosition(seat, me)} .avatar`);
+      if (!target) continue;
+      const to = target.getBoundingClientRect();
+      const card = document.createElement("span");
+      card.className = "back flying";
+      card.style.left = `${from.left - origin.left}px`;
+      card.style.top = `${from.top - origin.top}px`;
+      table.append(card);
+      requestAnimationFrame(() => {
+        card.style.transform = `translate(${to.left - from.left + round * 6}px, ${to.top - from.top + 20}px) rotate(${round * 8 - 12}deg)`;
+      });
+      await sleep(110);
+    }
+  }
+  await sleep(500);
+  table.querySelectorAll(".flying").forEach((c) => c.remove());
+}
+
+async function makeSignal(signal) {
+  try {
+    const obs = await api(`/api/games/${current.id}/signal`, { method: "POST", body: { signal }, token: current.token });
+    const made = obs.history.filter((e) => e.kind === "SignalMade" && e.actor === obs.seat).pop();
+    const names = obs.seats.map((s) => s.name);
+    const seenBy = made ? made.payload.seen_by : [];
+    toast(seenBy.length ? `Te han visto: ${seenBy.map((s) => names[s] + (s === obs.partner ? " (compañero)" : " (rival)")).join(", ")}` : "Nadie te miraba: la seña se ha perdido");
+    current.obs = obs; current.seen = maxSeq(obs);
+    renderGame();
+  } catch (err) { toast(err.message); }
+}
+
+// Reloj de la mesa: las miradas cambian con el tiempo y los bots pueden hacer señas.
+let tickTimer;
+function scheduleTick() {
+  clearTimeout(tickTimer);
+  const obs = current?.obs;
+  if (!obs || obs.finished || obs.awaiting_deal || !obs.gazes || !obs.gazes.length) return;
+  tickTimer = setTimeout(async () => {
+    if (!current || current.busy || !document.querySelector(".game")) return;
+    try {
+      const fresh = await api(`/api/games/${current.id}/tick`, { method: "POST", token: current.token });
+      if (!current.busy) await animateTo(fresh);
+    } catch { scheduleTick(); }
+  }, 2200 * settings.speed);
+}
+
 function setStatus(text) { const el = document.getElementById("status"); if (el && text) el.textContent = text; }
 
 let pollTimer;
