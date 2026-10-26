@@ -1,0 +1,49 @@
+site_name: MUS.ST
+site_description: El Mus que aprende cómo juegas — motor FEM, API de bots e IA
+repo_url: https://github.com/saraatrapero/mus-sara
+theme:
+  name: material
+  language: es
+  palette:
+    - scheme: default
+      primary: green
+      accent: red
+      toggle: { icon: material/brightness-7, name: Modo oscuro }
+    - scheme: slate
+      primary: green
+      accent: red
+      toggle: { icon: material/brightness-4, name: Modo claro }
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+markdown_extensions:
+  - admonition
+  - tables
+  - toc: { permalink: true }
+nav:
+  - Inicio: index.md
+  - Reglas del juego: game-rules.md
+  - Arquitectura: architecture.md
+  - API de bots (tutorial): bot-api.md
+  - Referencia del API: api-reference.md
+  - Agentes de IA: agents.md
+  - PlayerModel: player-model.md
+  - Testing y experimentos: testing.md
+  - Despliegue: deployment.md
+  - Decisiones (ADR): adr/index.md
+  - Diseño (Fase 0):
+      - Índice: design/00-indice.md
+      - Requisitos: design/01-requisitos.md
+      - Arquitectura: design/02-arquitectura.md
+      - Motor y reglas: design/03-motor-y-reglas.md
+      - Eventos y observaciones: design/04-eventos-y-observaciones.md
+      - API de bots: design/05-api-bots.md
+      - Agentes: design/06-agentes.md
+      - PlayerModel: design/07-player-model.md
+      - Datos y seguridad: design/08-datos-y-seguridad.md
+      - Interfaz: design/09-interfaz.md
+      - Testing y plan: design/10-testing-y-plan.md
+      - Preguntas al profesor: design/11-preguntas-profesor.md
