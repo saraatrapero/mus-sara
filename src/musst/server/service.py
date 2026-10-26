@@ -13,20 +13,38 @@ from __future__ import annotations
 
 import json
 import random
+import re
 from collections import defaultdict
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from musst.bots.registry import BotEntry, all_entries, builtin_entries
 from musst.engine.game import IllegalAction
 from musst.engine.observation import build_observation
-from musst.persistence.db import Repository, User
+from musst.learning.player_model import PlayerModel
+from musst.persistence.db import ROLES, Repository, User
 from musst.runtime.runner import play_game
 from musst.server import coach
 from musst.server.sessions import BOT_LEVELS, GameSession, Seat, SessionManager
 
 MODES = ("rapida", "personalizada", "entrenamiento", "contra_bot")
+USERNAME = re.compile(r"^[A-Za-z0-9_.\-]{3,32}$")
+MIN_PASSWORD = 8
+
+
+def check_credentials(username: str, password: str | None) -> None:
+    if not USERNAME.match(username or ""):
+        raise ApiError(422, "Usuario: de 3 a 32 letras, números, punto, guion o guion bajo")
+    if password is not None and len(password) < MIN_PASSWORD:
+        raise ApiError(422, f"La contraseña necesita al menos {MIN_PASSWORD} caracteres")
+
+
+def _iso(ts: float | None) -> str | None:
+    return datetime.fromtimestamp(ts, UTC).isoformat() if ts else None
+
+
 PROFILE_SETTINGS = {"theme", "text_size", "reduce_motion", "sound", "speed", "table", "card_back"}
 
 
@@ -77,7 +95,90 @@ class MusService:
             "username": user.username,
             "avatar": user.avatar,
             "settings": user.settings,
+            "role": user.role,
         }
+
+    # ------------------------------------------------------------------ administración
+    @staticmethod
+    def _admin(user: User | None) -> User:
+        if user is None:
+            raise ApiError(401, "Inicia sesión")
+        if not user.is_admin:
+            raise ApiError(403, "Solo para administradores")
+        return user
+
+    def admin_overview(self, user: User | None) -> dict[str, Any]:
+        """Datos del panel (misma forma que la versión con Supabase)."""
+        self._admin(user)
+        users = self.repo.list_users()
+        games = self.repo.all_statistics()
+        for g in games:
+            g["created_at"] = _iso(g["created_at"])
+        models = []
+        for u in users:
+            raw = self.repo.load_model(f"user:{u['id']}")
+            if raw:
+                models.append(
+                    {
+                        "user_id": u["id"],
+                        "model": raw,
+                        "style": PlayerModel.from_dict(raw).style()["label"],
+                    }
+                )
+        memory = []
+        raw_self = self.repo.load_model("self:profesional")
+        if raw_self and (raw_self.get("extra") or {}).get("self_review"):
+            memory.append({"key": "self:profesional", "data": raw_self["extra"]["self_review"]})
+        for u in users:
+            u["created_at"] = _iso(u["created_at"])
+            u["last_seen"] = _iso(u["last_seen"])
+        return {"users": users, "games": games, "models": models, "memory": memory}
+
+    def admin_create_user(self, user: User | None, body: dict[str, Any]) -> dict[str, Any]:
+        self._admin(user)
+        username, password = str(body.get("username", "")), str(body.get("password", ""))
+        role = body.get("role", "player")
+        check_credentials(username, password)
+        if role not in ROLES:
+            raise ApiError(422, "Rol no válido")
+        if self.repo.user_by_name(username) is not None:
+            raise ApiError(409, "Ese nombre de usuario ya existe")
+        created = self.repo.create_user(username, password)
+        self.repo.set_role(created.id, role)
+        return {"id": created.id, "username": username, "role": role}
+
+    def admin_update_user(
+        self, user: User | None, user_id: int, body: dict[str, Any]
+    ) -> dict[str, bool]:
+        admin = self._admin(user)
+        target = self.repo.get_user(user_id)
+        if target is None:
+            raise ApiError(404, "Usuario no encontrado")
+        username, role, password = body.get("username"), body.get("role"), body.get("password")
+        if username and username != target.username:
+            check_credentials(username, None)
+            if self.repo.user_by_name(username) is not None:
+                raise ApiError(409, "Ese nombre de usuario ya existe")
+            self.repo.rename_user(user_id, username)
+        if role and role != target.role:
+            if role not in ROLES:
+                raise ApiError(422, "Rol no válido")
+            if user_id == admin.id:
+                raise ApiError(422, "No puedes quitarte a ti mismo el rol de administrador")
+            self.repo.set_role(user_id, role)
+        if password:
+            check_credentials(target.username, password)
+            self.repo.set_password(user_id, password)
+        return {"ok": True}
+
+    def admin_delete_user(self, user: User | None, user_id: int) -> dict[str, bool]:
+        admin = self._admin(user)
+        if user_id == admin.id:
+            raise ApiError(422, "No puedes borrar tu propia cuenta de administrador")
+        if self.repo.get_user(user_id) is None:
+            raise ApiError(404, "Usuario no encontrado")
+        self.repo.delete_user(user_id)
+        return {"ok": True}
 
     def update_me(
         self, user: User, avatar: str | None, settings: dict[str, Any]

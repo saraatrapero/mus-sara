@@ -41,7 +41,14 @@ python -m http.server -d site 8001          # probar en http://localhost:8001
 Diferencias con el servidor: perfil local sin contraseña, sin compañero humano por invitación y
 sin bots externos en subproceso (el torneo los ejecuta en GitHub Actions).
 
-## Cuentas de usuario (Supabase)
+## Cuentas de usuario
+
+**Por defecto (solo GitHub Pages)**: usuario y contraseña guardados en el navegador (ADR-015).
+La primera cuenta que se registra es la administradora y ve el menú **Admin**: usuarios
+(crear, editar, borrar), actividad, resultados contra cada nivel, estilos que detecta la IA y
+autocrítica de los bots.
+
+**Opcional, cuentas compartidas entre dispositivos (Supabase)**:
 
 1. Crea un proyecto gratuito en https://supabase.com.
 2. *Authentication → Providers → Email*: desactiva **Confirm email** (los usuarios entran con
@@ -53,7 +60,7 @@ sin bots externos en subproceso (el torneo los ejecuta en GitHub Actions).
    `SUPABASE_URL` y `SUPABASE_ANON_KEY` (*Project Settings → API*). Son públicas por diseño;
    **nunca** uses la clave `service_role`.
 
-Sin esas variables la web funciona igual con un perfil local por navegador.
+Sin esas variables la web usa las cuentas del navegador.
 
 ## Alternativa con servidor
 

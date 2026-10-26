@@ -38,7 +38,9 @@ def backend(tmp_path):
 
 def test_partida_completa_con_perfil_y_estadisticas(backend):
     assert backend.handle("GET", "/api/me", None, None) == (200, None)
-    status, _ = backend.handle("POST", "/api/auth/register", {"username": "sara"}, None)
+    status, _ = backend.handle(
+        "POST", "/api/auth/register", {"username": "sara", "password": "contraseña-1"}, None
+    )
     assert status == 200
     status, data = backend.handle(
         "POST",
@@ -84,7 +86,9 @@ def test_sin_invitaciones_ni_bots_externos(backend):
 
 def test_la_partida_sobrevive_a_recargar_la_pagina(tmp_path):
     first = LocalBackend(tmp_path)
-    first.handle("POST", "/api/auth/login", {"username": "sara"}, None)
+    first.handle(
+        "POST", "/api/auth/register", {"username": "sara", "password": "contraseña-1"}, None
+    )
     _, data = first.handle("POST", "/api/games", {"seed": 5}, None)
     gid, token = data["game_id"], data["seat_token"]
     reloaded = LocalBackend(tmp_path)  # nuevo intérprete, misma base de datos en IndexedDB
@@ -98,8 +102,88 @@ def test_la_partida_sobrevive_a_recargar_la_pagina(tmp_path):
 
 
 def test_perfil_local_no_permite_login_con_contrasena(backend):
-    backend.handle("POST", "/api/auth/login", {"username": "sara"}, None)
-    assert backend.repo.authenticate("sara", "!local") is None
+    backend.handle("POST", "/api/auth/login", {"username": "viejo", "cloud": True}, None)
+    assert backend.repo.authenticate("viejo", "!local") is None
+
+
+def reg(b, name, pw="contraseña-1"):
+    return b.handle("POST", "/api/auth/register", {"username": name, "password": pw}, None)
+
+
+def test_cuentas_con_contrasena_y_primer_usuario_administrador(tmp_path):
+    b = LocalBackend(tmp_path)
+    status, first = reg(b, "sara")
+    assert status == 200 and first["role"] == "admin"
+    assert "contraseña-1" not in (tmp_path / "musst.sqlite3").read_bytes().decode("latin-1")
+    b.handle("POST", "/api/auth/logout", None, None)
+    status, second = reg(b, "ana")
+    assert second["role"] == "player"
+    assert reg(b, "ana")[0] == 409
+    assert reg(b, "x")[0] == 422 and reg(b, "luis", "corta")[0] == 422
+    b.handle("POST", "/api/auth/logout", None, None)
+    assert (
+        b.handle("POST", "/api/auth/login", {"username": "ana", "password": "mala-clave"}, None)[0]
+        == 401
+    )
+    assert (
+        b.handle("POST", "/api/auth/login", {"username": "ana", "password": "contraseña-1"}, None)[
+            0
+        ]
+        == 200
+    )
+    assert b.handle("GET", "/api/me", None, None)[1]["username"] == "ana"
+    # al recargar la página sigue la sesión
+    assert LocalBackend(tmp_path).handle("GET", "/api/me", None, None)[1]["username"] == "ana"
+
+
+def test_un_perfil_antiguo_sin_contrasena_puede_ponerse_una(backend):
+    backend.handle("POST", "/api/auth/login", {"username": "vieja", "cloud": True}, None)
+    backend.handle("POST", "/api/auth/logout", None, None)
+    assert reg(backend, "vieja")[0] == 200
+    assert backend.repo.authenticate("vieja", "contraseña-1") is not None
+
+
+def test_panel_de_administracion(tmp_path):
+    b = LocalBackend(tmp_path)
+    reg(b, "sara")  # administradora
+    _, data = b.handle(
+        "POST", "/api/games", {"seed": 2, "target": 10, "rivals": "profesional"}, None
+    )
+    play_until_end(b, data["game_id"], data["seat_token"], data["observation"])
+    status, created = b.handle(
+        "POST", "/api/admin/users", {"username": "ana", "password": "contraseña-2"}, None
+    )
+    assert status == 200 and created["role"] == "player"
+    uid = created["id"]
+    assert (
+        b.handle("POST", "/api/admin/users", {"username": "ana", "password": "contraseña-2"}, None)[
+            0
+        ]
+        == 409
+    )
+    assert (
+        b.handle("PUT", f"/api/admin/users/{uid}", {"username": "anabel", "role": "admin"}, None)[0]
+        == 200
+    )
+    assert b.handle("PUT", f"/api/admin/users/{uid}", {"password": "nueva-clave-1"}, None)[0] == 200
+    assert b.repo.authenticate("anabel", "nueva-clave-1").role == "admin"
+    me = b.user.id
+    assert b.handle("PUT", f"/api/admin/users/{me}", {"role": "player"}, None)[0] == 422
+    assert b.handle("DELETE", f"/api/admin/users/{me}", None, None)[0] == 422
+    status, overview = b.handle("GET", "/api/admin/overview", None, None)
+    assert status == 200
+    assert {u["username"] for u in overview["users"]} == {"sara", "anabel"}
+    assert len(overview["games"]) == 1 and overview["games"][0]["rivals"] == "profesional"
+    assert overview["models"] and overview["models"][0]["style"]
+    assert overview["memory"] and overview["memory"][0]["key"] == "self:profesional"
+    json.dumps(overview)
+    assert b.handle("DELETE", f"/api/admin/users/{uid}", None, None)[0] == 200
+    assert b.repo.get_user(uid) is None
+    # un jugador normal no puede usar el panel
+    b.handle("POST", "/api/auth/logout", None, None)
+    reg(b, "luis")
+    assert b.handle("GET", "/api/admin/overview", None, None)[0] == 403
+    assert b.handle("DELETE", f"/api/admin/users/{me}", None, None)[0] == 403
 
 
 def test_handle_json_y_errores():
@@ -118,7 +202,7 @@ def test_handle_json_y_errores():
 
 def test_sincronizacion_con_la_nube(tmp_path):
     b = LocalBackend(tmp_path)
-    b.handle("POST", "/api/auth/login", {"username": "sara"}, None)
+    b.handle("POST", "/api/auth/register", {"username": "sara", "password": "contraseña-1"}, None)
     _, data = b.handle(
         "POST", "/api/games", {"seed": 4, "target": 10, "rivals": "profesional"}, None
     )
@@ -132,7 +216,7 @@ def test_sincronizacion_con_la_nube(tmp_path):
 
     # Otro navegador: al iniciar sesión recibe lo aprendido
     other = LocalBackend(tmp_path / "otro" if (tmp_path / "otro").mkdir() is None else None)
-    other.handle("POST", "/api/auth/login", {"username": "sara"}, None)
+    other.handle("POST", "/api/auth/login", {"username": "sara", "cloud": True}, None)
     status, res = other.handle(
         "POST", "/api/cloud/import", {"model": out["model"], "bot_memory": out["bot_memory"]}, None
     )

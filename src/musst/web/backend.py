@@ -7,9 +7,12 @@ los mismos que en el servidor.
 
 Diferencias con el servidor (y por qué):
 
-* **Perfil local** en lugar de cuentas: no hay servidor que guarde contraseñas. Los datos
-  (partidas, estadísticas, lo que el bot aprende de ti) se guardan en SQLite dentro del
-  navegador (IndexedDB) y no salen de él.
+* **Cuentas en el navegador**: usuario y contraseña (hash scrypt, el mismo que el servidor) y
+  un administrador (la primera cuenta que se registra). Los datos (cuentas, partidas,
+  estadísticas, lo que el bot aprende de cada jugador) se guardan en SQLite dentro del
+  navegador (IndexedDB) y no salen de él: cada navegador tiene sus propias cuentas. Sirve para
+  que varias personas usen el mismo equipo (p. ej. en clase) sin mezclar sus datos, **no** como
+  seguridad frente a quien controla ese equipo (ver ADR-015).
 * **Sin compañero humano por invitación**: necesita un servidor que comparta la partida.
 * **Sin bots externos en subproceso**: el navegador no puede lanzar procesos. El torneo con
   todos los bots se ejecuta en GitHub Actions y aquí se muestra su scoreboard.
@@ -27,7 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from musst.persistence.db import Repository, User
-from musst.server.service import ApiError, MusService
+from musst.server.service import ApiError, MusService, check_credentials
 
 DATA_DIR = Path("/data")  # montado sobre IndexedDB por el worker
 USERNAME = re.compile(r"^[A-Za-z0-9_.\-]{3,32}$")
@@ -57,11 +60,42 @@ class LocalBackend:
             self.profile_file.write_text(str(user.id) if user else "")
 
     def _local_login(self, username: str) -> dict[str, Any]:
+        """Perfil sin contraseña: solo lo usa la sincronización con Supabase (la contraseña la
+        comprueba Supabase)."""
         if not USERNAME.match(username or ""):
             raise ApiError(422, "Nombre: de 3 a 32 letras, números, punto, guion o guion bajo")
         user = self.repo.get_or_create_local_user(username)
         self._set_profile(user)
         return {"id": user.id, "username": user.username}
+
+    def _register(self, username: str, password: str) -> dict[str, Any]:
+        check_credentials(username, password)
+        existing = self.repo.user_by_name(username)
+        if existing is not None and existing[1]:
+            raise ApiError(409, "Ese nombre de usuario ya existe")
+        if existing is not None:  # perfil local antiguo sin contraseña: se le pone una
+            user = existing[0]
+            self.repo.set_password(user.id, password)
+        else:
+            user = self.repo.create_user(username, password)
+        if self.repo.count_admins() == 0:
+            self.repo.set_role(user.id, "admin")  # la primera cuenta administra este navegador
+        user = self.repo.get_user(user.id) or user
+        self._set_profile(user)
+        return {"id": user.id, "username": user.username, "role": user.role}
+
+    def _login(self, username: str, password: str) -> dict[str, Any]:
+        user = self.repo.authenticate(username, password)
+        if user is None:
+            raise ApiError(401, "Usuario o contraseña incorrectos")
+        self._set_profile(user)
+        return {"id": user.id, "username": user.username, "role": user.role}
+
+    def _fresh_user(self) -> User | None:
+        """El usuario actual leído de la base (por si un administrador le cambió el rol)."""
+        if self.user is not None:
+            self.user = self.repo.get_user(self.user.id)
+        return self.user
 
     def _require_user(self) -> User:
         if self.user is None:
@@ -153,8 +187,25 @@ class LocalBackend:
                     self.user = self.repo.get_user(user.id)
                     return 200, result
                 return 200, svc.me(self.user)
-            if path in ("/api/auth/login", "/api/auth/register"):
-                return 200, self._local_login(str(body.get("username", "")))
+            if path == "/api/auth/register":
+                return 200, self._register(
+                    str(body.get("username", "")), str(body.get("password", ""))
+                )
+            if path == "/api/auth/login":
+                if body.get("cloud"):  # cuenta de Supabase ya autenticada
+                    return 200, self._local_login(str(body.get("username", "")))
+                return 200, self._login(
+                    str(body.get("username", "")), str(body.get("password", ""))
+                )
+            if path == "/api/admin/overview":
+                return 200, svc.admin_overview(self._fresh_user())
+            if path == "/api/admin/users" and method == "POST":
+                return 200, svc.admin_create_user(self._fresh_user(), body)
+            m = re.fullmatch(r"/api/admin/users/(\d+)", path)
+            if m and method == "PUT":
+                return 200, svc.admin_update_user(self._fresh_user(), int(m.group(1)), body)
+            if m and method == "DELETE":
+                return 200, svc.admin_delete_user(self._fresh_user(), int(m.group(1)))
             if path == "/api/auth/logout":
                 self._set_profile(None)
                 return 200, {"ok": True}
