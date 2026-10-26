@@ -97,6 +97,8 @@ def replay_actions(game: MusGame, actions: list[dict[str, Any]]) -> int:
             game.signal(item["seat"], item["signal"])
         elif "tick" in item:
             game.tick()
+        elif "look" in item:
+            game.look(item["seat"], item["look"])
         elif "deal" in item:
             dealt = int(item["deal"])
     return dealt
@@ -122,8 +124,14 @@ class SessionManager:
         names: dict[str, str] | None = None,
         avatar: str | None = None,
         signals: bool = True,
+        local_humans: dict[int, str] | None = None,
     ) -> tuple[GameSession, str]:
-        """Crea una partida. El humano ocupa el asiento 0; su pareja, el 2."""
+        """Crea una partida. El humano ocupa el asiento 0; su pareja, el 2.
+
+        ``local_humans`` (asiento → nombre) añade personas que juegan en el mismo dispositivo:
+        cada una tiene su token de asiento y el frontend tapa las cartas al cambiar de turno.
+        """
+        local_humans = {i: n for i, n in (local_humans or {}).items() if i in (1, 2, 3)}
         config = RulesConfig(target_points=target, signals_enabled=signals)
         game = MusGame(seed=seed, config=config)
         game_id = uuid.uuid4().hex[:12]
@@ -143,6 +151,18 @@ class SessionManager:
         rival_level = rivals if rivals in BOT_LEVELS else "medio"
         invite = None
         for idx in (1, 2, 3):
+            if idx in local_humans:
+                seat_token = f"{idx}.{secrets.token_urlsafe(24)}"  # el prefijo indica el asiento
+                seats.append(
+                    Seat(
+                        idx,
+                        "human",
+                        local_humans[idx][:24] or f"Jugador {idx + 1}",
+                        f"local:{game_id}:{idx}",
+                        token=seat_token,
+                    )
+                )
+                continue
             if idx == 2 and partner == "human":
                 invite = secrets.token_urlsafe(12)
                 seats.append(
@@ -263,6 +283,12 @@ class SessionManager:
             game.tick()
             session.actions.append({"tick": 1})
             self._bot_signals(session)
+            self._persist(session)
+
+    def human_look(self, session: GameSession, seat: Seat, target: int | None) -> None:
+        with session.lock:
+            session.game.look(seat.index, target)
+            session.actions.append({"seat": seat.index, "look": target})
             self._persist(session)
 
     def human_signal(self, session: GameSession, seat: Seat, signal: str) -> None:

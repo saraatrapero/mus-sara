@@ -68,6 +68,7 @@ class NewGame(BaseModel):
     names: dict[str, str] = Field(default_factory=dict)
     avatar: str | None = Field(default=None, max_length=64)
     signals: bool = True
+    players: Literal["bot", "pareja", "cuatro"] = "bot"
 
 
 class JoinGame(BaseModel):
@@ -91,6 +92,10 @@ class AdminUserUpdate(BaseModel):
     )
     password: str | None = Field(default=None, min_length=8, max_length=128)
     role: Literal["player", "admin"] | None = None
+
+
+class LookRequest(BaseModel):
+    target: int | None = Field(default=None, ge=0, le=3)
 
 
 class SignalRequest(BaseModel):
@@ -243,6 +248,12 @@ def create_app(repo: Repository | None = None, dev_mode: bool = DEV_MODE) -> Fas
     @app.post("/api/games/{game_id}/tick")
     def tick(game_id: str, x_seat_token: Annotated[str | None, Header()] = None) -> dict[str, Any]:
         return service.tick(game_id, x_seat_token)
+
+    @app.post("/api/games/{game_id}/look")
+    def look(
+        game_id: str, body: LookRequest, x_seat_token: Annotated[str | None, Header()] = None
+    ) -> dict[str, Any]:
+        return service.look(game_id, x_seat_token, body.target)
 
     @app.post("/api/games/{game_id}/signal")
     def signal(
