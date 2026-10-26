@@ -1,7 +1,7 @@
 # Testing y experimentos
 
 ```bash
-pytest                         # 156 tests
+pytest                         # 174 tests
 pytest --cov=musst             # cobertura (88 % global; motor 93-100 %)
 pytest tests/privacy           # solo fugas de información
 pytest tests/bot_conformance   # conformidad de todos los bots registrados
@@ -29,6 +29,8 @@ gana quien llega primero contando en orden de lances (VII.2), la negada que term
 ```bash
 python -m experiments.level_ladder --seeds 50 --seed 12345
 python -m experiments.adaptation --games 25 --seed 7
+python -m experiments.level_ladder --seeds 250 --pair medio profesional --seed 2027
+python -m experiments.ablation --seeds 75
 ```
 
 Los resultados (CSV) se escriben en `experiments/results/`.
@@ -48,9 +50,49 @@ Lectura honesta:
 
 - Random < Sencillo < {Medio, Profesional}, con intervalos que no se solapan con el 50 % salvo
   en el último escalón.
-- Profesional frente a Medio (55 %) **no es significativo** con 100 partidas. En este
+- Profesional frente a Medio (55 %) **no es significativo** con 100 partidas. Repetido con
+  **500 partidas** (seed 2027): el medio gana el **50.8 %** (IC 95 % 46.4 – 55.2 %). Es decir,
+  **en partidas sueltas los dos niveles son equivalentes**; el último escalón de la escalera
+  (criterio de salida de H6) **no se cumple**. En este
   experimento cada partida crea bots nuevos, así que el profesional **no conserva memoria** de
   sus rivales: su ventaja principal (el PlayerModel) no actúa. Ver el experimento de adaptación.
+
+### Ablación del profesional (150 partidas por variante contra el medio)
+
+Para saber qué aporta cada diferencia entre los dos niveles, se quita una sola cada vez:
+
+| Variante | % victorias contra el medio | IC 95 % |
+|---|---|---|
+| profesional | 52.7 % | 44.7 – 60.5 % |
+| sin agente de farol | 55.3 % | 47.3 – 63.1 % |
+| sin agente de pareja | 52.0 % | 44.1 – 59.8 % |
+| sin agente de comportamiento | 52.7 % | 44.7 – 60.5 % |
+| con la aversión al riesgo del medio | 52.7 % | 44.7 – 60.5 % |
+| con las muestras del medio | 52.0 % | 44.1 – 59.8 % |
+
+Lectura honesta: ninguna pieza cambia el resultado de forma medible. Sin memoria entre
+partidas, los agentes de comportamiento, farol y pareja apenas tienen datos, y la decisión la
+dominan el agente de probabilidad y el juez, que comparten ambos niveles. Además, con la CPU
+saturada (10 procesos en paralelo) hubo 2 decisiones que superaron el límite de 2 s del torneo:
+el profesional es el bot más cerca de ese límite.
+
+### Accesibilidad (criterio de H9)
+
+Lighthouse necesita Node, que no está disponible; se usa **axe-core 4.10** (el motor de reglas
+de accesibilidad en el que se basa Lighthouse) en Chrome sobre la versión web, con las reglas
+WCAG 2 A/AA y buenas prácticas:
+
+| Pantalla | Inicio | Aprender | Competir | Analizar | Ajustes | Mesa de juego |
+|---|---|---|---|---|---|---|
+| Problemas | 0 | 0 | 0 | 0 | 0 | 0 |
+
+Se corrigieron: jerarquía de títulos (un `h1` por pantalla) y cartas ocultas sin rol
+(`role="img"`).
+
+### Replay (criterio de H8)
+
+`tests/integration/test_replay.py`: el replay guardado es idéntico, evento a evento, al log que
+se obtiene reejecutando la seed y las acciones guardadas.
 
 ### Métricas además de victorias
 

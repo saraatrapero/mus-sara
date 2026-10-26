@@ -54,3 +54,26 @@ shift_after)`. Los tests comprueban que:
 - un jugador con `bluff=0.8` se distingue de uno con `bluff=0.0` (diferencia > 0.2, confianza > 0.5);
 - `risk_tolerance=0.9` y `0.1` producen perfiles distintos;
 - un cambio de 0 % a 95 % de faroles se detecta como cambio de estrategia.
+
+## Perfil y estilo (ampliación)
+
+Además de las tasas anteriores, el modelo mide con las manos enseñadas al final de cada jugada:
+
+| Métrica | Significado |
+|---|---|
+| `bet_with_strong` | P(envida al abrir \| mano buena, fuerza ≥ 0.65). Bajo = juega de tapado |
+| `bet_with_weak` | P(envida al abrir \| mano floja, fuerza < 0.4). Alto = farolero |
+| `accept_with_weak` | P(acepta \| mano floja) |
+| `stakes` | Piedras medias envidadas con mano buena, media y floja |
+
+`PlayerModel.style()` resume todo en una etiqueta con su confianza: *farolero*, *arriesgado*,
+*conservador*, *de tapado*, *cauto*, *equilibrado*, *imprevisible* (cambió de estrategia en la
+última partida) o *sin datos aún*.
+
+**Intuir las cartas**: el agente de probabilidad pondera cada mundo simulado por
+P(envite | fuerza) **aprendida de ese jugador** (interpolando entre lo que hace con mano floja
+y con mano buena), mezclada con el modelo por defecto según la confianza. Si un jugador cauto
+envida, sube mucho la probabilidad de que lleve buena mano; si es farolero, bastante menos.
+
+**Conteo** (`CountingAgent`): mis cartas y mis descartes (salvo que se rebaraje), y cuántas
+cartas pide cada jugador: pedir una carta indica que guardaba buena mano.

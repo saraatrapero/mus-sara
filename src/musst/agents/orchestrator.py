@@ -11,13 +11,33 @@ from musst.agents.specialists import (
     BehaviourAgent,
     BluffAgent,
     CardAgent,
+    CountingAgent,
     PartnerAgent,
     ProbabilityAgent,
     ScoreAgent,
 )
 from musst.agents.strategy import Judge, MusPlanner, StrategyAgent
 from musst.bots.api import Action, Bot, GameEndInfo, GameStartInfo, Observation
+from musst.engine.signals import Signal
+from musst.learning.self_review import ReviewedDecision, SelfReview
 from musst.learning.updater import Learner, LearningUpdate
+
+SIGNAL_PRIORITY: tuple[str, ...] = (
+    Signal.DUPLES.value,
+    Signal.TREINTA_Y_UNA.value,
+    Signal.MEDIAS_REYES.value,
+    Signal.DOS_REYES.value,
+    Signal.MEDIAS_ASES.value,
+    Signal.MEDIAS.value,
+    Signal.JUEGO.value,
+    Signal.DOS_ASES.value,
+    Signal.PARES.value,
+    Signal.TREINTA.value,
+    Signal.VEINTINUEVE.value,
+    Signal.CIEGO.value,
+)
+"""Qué seña interesa más pasar al compañero si hay varias verdaderas."""
+LANCE_KINDS = {"pass", "bet", "raise", "ordago", "accept", "reject", "accept_no_lose"}
 
 
 @dataclass(frozen=True)
@@ -32,6 +52,11 @@ class LevelConfig:
     noise: float
     learn: bool
     cut_threshold: float = 0.42
+    signal_policy: str = "cuidadoso"
+    """``cuidadoso``: solo si le mira el compañero y ningún rival. ``descuidado``: le basta
+    con que le mire el compañero."""
+    self_review: bool = False
+    """Revisa sus decisiones al acabar cada partida y corrige sus estimaciones."""
     extra: dict[str, Any] = field(default_factory=dict)
 
 
@@ -44,20 +69,23 @@ LEVELS: dict[str, LevelConfig] = {
         risk_aversion=0.35,
         noise=0.05,
         learn=False,
+        signal_policy="descuidado",
     ),
     "profesional": LevelConfig(
         "profesional",
-        ("cartas", "comportamiento", "probabilidad", "farol", "marcador", "pareja"),
+        ("cartas", "conteo", "comportamiento", "probabilidad", "farol", "marcador", "pareja"),
         samples=300,
         samples_deep=800,
         risk_aversion=0.25,
         noise=0.0,
         learn=True,
+        self_review=True,
     ),
 }
 
 AGENT_FACTORIES: dict[str, type[Agent]] = {
     "cartas": CardAgent,
+    "conteo": CountingAgent,
     "comportamiento": BehaviourAgent,
     "probabilidad": ProbabilityAgent,
     "farol": BluffAgent,
@@ -112,8 +140,11 @@ class AgentBot(Bot):
         level: str = "profesional",
         seed: int | None = None,
         learner: Learner | None = None,
+        learn_opponents: bool = True,
     ) -> None:
         self.level = LEVELS[level]
+        self.learn_opponents = learn_opponents
+        """``False`` cuando otro (el servidor) ya aprende de los jugadores con la misma memoria."""
         self.name = level
         self.rng = random.Random(seed)
         self.orchestrator = Orchestrator(self.level)
@@ -124,6 +155,22 @@ class AgentBot(Bot):
         self.last_decision: Decision | None = None
         self.decisions: list[Decision] = []
         self.last_learning: list[LearningUpdate] = []
+        self.review_log: list[ReviewedDecision] = []
+        self.self_review_summary: list[str] = []
+        self._review: SelfReview | None = None
+
+    @property
+    def self_key(self) -> str:
+        return f"self:{self.level.name}"
+
+    def review_memory(self) -> SelfReview | None:
+        """Autocrítica persistente (en el mismo almacén que los modelos de jugador)."""
+        if not self.level.self_review or self.learner is None:
+            return None
+        if self._review is None:
+            model = self.learner.long_model(self.self_key)
+            self._review = SelfReview.from_dict(model.extra.get("self_review"))
+        return self._review
 
     def on_game_start(self, info: GameStartInfo) -> None:
         self.seat = info.seat
@@ -132,26 +179,67 @@ class AgentBot(Bot):
         names = ids if isinstance(ids, list | tuple) else info.player_names
         self.player_ids = {s: str(names[s]) for s in range(4) if s != info.seat}
         self.decisions = []
+        self.review_log = []
 
     def decide(self, observation: Observation) -> Action:
         ctx = AgentContext(
             observation,
             self.rng,
-            {"samples": self.level.samples, "samples_deep": self.level.samples_deep},
+            {
+                "samples": self.level.samples,
+                "samples_deep": self.level.samples_deep,
+                "self_review": self.review_memory(),
+            },
             self.learner,
             self.player_ids,
         )
         decision = self.orchestrator.decide(ctx)
         self.last_decision = decision
         self.decisions.append(decision)
+        kind = decision.action.type
+        if kind in LANCE_KINDS and "probabilidad" in ctx.reports:
+            self.review_log.append(
+                ReviewedDecision(
+                    observation.round_no,
+                    observation.phase,
+                    "accept" if kind == "accept_no_lose" else kind,
+                    ctx.estimate("probabilidad", "p_win").value,
+                    observation.seat,
+                    observation.mano,
+                )
+            )
         return decision.action
+
+    def signal(self, observation: Observation) -> str | None:
+        """Pasa la mejor seña verdadera cuando le mira su compañero (y, si es cuidadoso,
+        cuando no le mira ningún rival)."""
+        available = set(observation.available_signals)
+        if not available or not observation.gazes:
+            return None
+        gazes = observation.gazes
+        partner_looks = gazes[observation.partner] == observation.seat
+        rival_looks = any(gazes[r] == observation.seat for r in observation.opponents)
+        if not partner_looks or (self.level.signal_policy == "cuidadoso" and rival_looks):
+            return None
+        if observation.signals_seen.get(observation.seat):
+            return None  # una seña por jugada basta: más gestos, más riesgo de que la vean
+        return next((s for s in SIGNAL_PRIORITY if s in available), None)
 
     def on_game_end(self, info: GameEndInfo) -> None:
         if self.learner is None or not self.level.learn:
             return
-        self.last_learning = self.learner.learn_game(
-            list(info.history), self.player_ids, self.target
-        )
+        if self.learn_opponents:
+            self.last_learning = self.learner.learn_game(
+                list(info.history), self.player_ids, self.target
+            )
+        self._review = None  # recarga: otro bot del mismo nivel puede haber guardado ya
+        review = self.review_memory()
+        if review is not None:
+            lost = info.winner != self.seat % 2
+            self.self_review_summary = review.review(self.review_log, info.history, lost)
+            model = self.learner.long_model(self.self_key)
+            model.extra["self_review"] = review.to_dict()
+            self.learner.store.save(model)
 
 
 class MediumBot(AgentBot):
@@ -164,5 +252,7 @@ class MediumBot(AgentBot):
 class ProBot(AgentBot):
     """Nivel PROFESIONAL: todos los agentes + PlayerModel con aprendizaje."""
 
-    def __init__(self, seed: int | None = None, learner: Learner | None = None) -> None:
-        super().__init__("profesional", seed, learner)
+    def __init__(
+        self, seed: int | None = None, learner: Learner | None = None, learn_opponents: bool = True
+    ) -> None:
+        super().__init__("profesional", seed, learner, learn_opponents)

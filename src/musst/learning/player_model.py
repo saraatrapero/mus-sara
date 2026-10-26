@@ -20,6 +20,9 @@ METRICS: tuple[str, ...] = (
     "raise_rate",
     "ordago_rate",
     "mus_rate",
+    "bet_with_strong",
+    "bet_with_weak",
+    "accept_with_weak",
 )
 
 PRIORS: dict[str, float] = {
@@ -31,6 +34,9 @@ PRIORS: dict[str, float] = {
     "raise_rate": 0.1,
     "ordago_rate": 0.03,
     "mus_rate": 0.5,
+    "bet_with_strong": 0.7,
+    "bet_with_weak": 0.1,
+    "accept_with_weak": 0.2,
 }
 """Media a priori de cada métrica (jugador "típico"). Configurable."""
 
@@ -111,6 +117,12 @@ class PlayerModel:
     player_id: str
     rates: dict[tuple[str, str, str], Rate] = field(default_factory=dict)
     games: int = 0
+    stakes: dict[str, list[float]] = field(default_factory=dict)
+    """Piedras envidadas por tipo de mano: ``"grande|fuerte" -> [suma, veces]``."""
+    drift_recent: bool = False
+    """En la última partida cambió de estrategia (ver ``Learner``)."""
+    extra: dict[str, Any] = field(default_factory=dict)
+    """Datos de otros aprendices (p. ej. la autocrítica del bot) con la misma persistencia."""
 
     def _rate(self, metric: str, lance: str, score: str) -> Rate:
         key = (metric, lance, score)
@@ -145,9 +157,23 @@ class PlayerModel:
         confidence = n / (n + SHRINK_K) if n > 0 else 0.0
         return Estimate(min(1.0, max(0.0, mean)), confidence, n)
 
+    def record_stake(self, lance: str, bucket: str, amount: float) -> None:
+        for key in (f"{lance}|{bucket}", f"{ANY}|{bucket}"):
+            entry = self.stakes.setdefault(key, [0.0, 0.0])
+            entry[0] += amount
+            entry[1] += 1
+
+    def mean_stake(self, bucket: str, lance: str = ANY) -> tuple[float | None, float]:
+        """Piedras medias envidadas con ese tipo de mano y nº de veces observado."""
+        total, n = self.stakes.get(f"{lance}|{bucket}", [0.0, 0.0])
+        return (total / n if n else None), n
+
     def decay(self, factor: float) -> None:
         for rate in self.rates.values():
             rate.decay(factor)
+        for entry in self.stakes.values():
+            entry[0] *= factor
+            entry[1] *= factor
 
     def sample_size(self, metric: str = "aggression") -> float:
         rate = self.rates.get((metric, ANY, ANY))
@@ -163,11 +189,20 @@ class PlayerModel:
             "player_id": self.player_id,
             "games": self.games,
             "rates": {"|".join(k): r.to_list() for k, r in self.rates.items()},
+            "stakes": self.stakes,
+            "drift_recent": self.drift_recent,
+            "extra": self.extra,
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> PlayerModel:
-        model = cls(data["player_id"], games=data.get("games", 0))
+        model = cls(
+            data["player_id"],
+            games=data.get("games", 0),
+            stakes={k: list(v) for k, v in data.get("stakes", {}).items()},
+            drift_recent=bool(data.get("drift_recent", False)),
+            extra=dict(data.get("extra", {})),
+        )
         for key, (s, t) in data.get("rates", {}).items():
             metric, lance, score = key.split("|")
             model.rates[(metric, lance, score)] = Rate(s, t)
@@ -180,6 +215,51 @@ class PlayerModel:
             est = self.estimate(metric)
             out[metric] = {"value": est.value, "confidence": est.label, "n": est.n}
         return out
+
+    def style(self) -> dict[str, Any]:
+        """Etiqueta de estilo con su confianza (para jugadores y para el panel de administración).
+
+        Cada estilo puntúa cuánto se separa el jugador del jugador típico (``PRIORS``) en las
+        métricas que lo definen, ponderado por la confianza de cada métrica.
+        """
+
+        def dev(metric: str) -> tuple[float, float]:
+            est = self.estimate(metric)
+            return est.value - PRIORS[metric], est.confidence
+
+        scores: dict[str, tuple[float, float]] = {}
+
+        def put(name: str, *parts: tuple[float, float]) -> None:
+            value = sum(d for d, _ in parts) / len(parts)
+            conf = min(c for _, c in parts)
+            scores[name] = (value, conf)
+
+        put("farolero", dev("bet_with_weak"), dev("bluff_frequency"))
+        put("arriesgado", dev("ordago_rate"), dev("risk_tolerance"), dev("accept_with_weak"))
+        a, ca = dev("aggression")
+        acc, cacc = dev("acceptance_rate")
+        put("conservador", (-a, ca), (-acc, cacc))
+        bs, cbs = dev("bet_with_strong")
+        put("de tapado", (-bs, cbs))
+        bw, cbw = dev("bet_with_weak")
+        put("cauto", (-bw, cbw), (-acc, cacc))
+        confidence = max((c for _, c in scores.values()), default=0.0)
+        if confidence < 0.2:
+            return {
+                "label": "sin datos aún",
+                "confidence": confidence_label(confidence),
+                "scores": {},
+            }
+        if self.drift_recent:
+            label = "imprevisible"
+        else:
+            name, (value, conf) = max(scores.items(), key=lambda kv: kv[1][0] * kv[1][1])
+            label = name if value * conf > 0.03 else "equilibrado"
+        return {
+            "label": label,
+            "confidence": confidence_label(confidence),
+            "scores": {k: round(v * c, 3) for k, (v, c) in scores.items()},
+        }
 
 
 def js_divergence(p: float, q: float) -> float:

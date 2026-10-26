@@ -92,3 +92,21 @@ def test_detecta_cambio_de_estrategia():
         if i >= 8 and any(u.drift for u in updates):
             shifted = True
     assert shifted
+
+
+def test_estilo_y_piedras_segun_la_mano():
+    farolero = _observe(lambda s: SyntheticPlayer(bluff=0.8, seed=s)).long_model("rival")
+    tapado = _observe(
+        lambda s: SyntheticPlayer(bluff=0.0, value_threshold=0.95, seed=s)
+    ).long_model("rival")
+    assert farolero.style()["label"] == "farolero"
+    assert tapado.style()["label"] in ("de tapado", "cauto", "conservador")
+    assert farolero.estimate("bet_with_weak").value > tapado.estimate("bet_with_weak").value + 0.2
+    stake, n = farolero.mean_stake("floja")
+    assert stake is not None and n > 0
+    again = PlayerModel.from_dict(farolero.to_dict())
+    assert again.style() == farolero.style() and again.stakes == farolero.stakes
+
+
+def test_sin_datos_no_hay_etiqueta():
+    assert PlayerModel("nuevo").style()["label"] == "sin datos aún"

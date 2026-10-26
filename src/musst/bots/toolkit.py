@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from musst.engine import evaluation as ev
 from musst.engine.cards import Card, full_deck
 from musst.engine.observation import Observation
+from musst.engine.signals import truthful_signals
 
 LANCE_NAMES = ("grande", "chica", "pares", "juego", "punto")
 
@@ -23,7 +24,9 @@ def unseen_cards(obs: Observation) -> list[Card]:
     mine = set(obs.hand)
     discarded: set[Card] = set()
     for event in obs.history:
-        if (
+        if event["kind"] == "DeckReshuffled" and event["round"] == obs.round_no:
+            discarded.clear()  # FEM III.15: los descartes vuelven al mazo
+        elif (
             event["kind"] == "CardsDiscarded"
             and event["round"] == obs.round_no
             and "cards" in event["payload"]
@@ -37,6 +40,11 @@ def speaking_order(mano: int) -> list[int]:
 
 
 def _consistent(hand: Sequence[Card], seat: int, obs: Observation) -> bool:
+    signals = obs.signals_seen.get(seat)
+    if signals and seat != obs.seat:
+        truthful = {s.value for s in truthful_signals(hand)}
+        if not set(signals) <= truthful:  # las señas son siempre verdaderas (FEM VIII.4)
+            return False
     pares = obs.declarations.get("pares", {})
     if seat in pares and ev.pairs(hand).has_pairs != pares[seat]:
         return False
@@ -47,21 +55,34 @@ def _consistent(hand: Sequence[Card], seat: int, obs: Observation) -> bool:
 def sample_world(
     obs: Observation, rng: random.Random, max_tries: int = 50
 ) -> dict[int, tuple[Card, ...]]:
-    """Muestra manos para los otros tres asientos compatibles con las declaraciones públicas."""
+    """Muestra manos para los otros tres asientos compatibles con lo que sé.
+
+    Restricciones: declaraciones públicas de pares/juego y señas que he visto (verdaderas).
+    Se reparte primero a los asientos más restringidos (los que han hecho señas), cada uno con
+    varios intentos, para que una seña rara (p. ej. 31) no obligue a descartar mundos enteros.
+    """
     pool = unseen_cards(obs)
-    others = [s for s in range(4) if s != obs.seat]
+    others = sorted(
+        (s for s in range(4) if s != obs.seat), key=lambda s: -len(obs.signals_seen.get(s, ()))
+    )
     world: dict[int, tuple[Card, ...]] = {obs.seat: obs.hand}
     for _ in range(max_tries):
-        rng.shuffle(pool)
+        remaining = list(pool)
         ok = True
-        for i, seat in enumerate(others):
-            hand = tuple(pool[i * 4 : i * 4 + 4])
-            if not _consistent(hand, seat, obs):
+        for seat in others:
+            for _ in range(max_tries):
+                hand = tuple(rng.sample(remaining, 4))
+                if _consistent(hand, seat, obs):
+                    break
+            else:
                 ok = False
                 break
             world[seat] = hand
+            for card in hand:
+                remaining.remove(card)
         if ok:
             return world
+    rng.shuffle(pool)
     for i, seat in enumerate(others):  # se relaja la restricción si es muy improbable
         world[seat] = tuple(pool[i * 4 : i * 4 + 4])
     return world
@@ -96,7 +117,7 @@ class WinEstimate:
         """Error estándar → confianza en [0, 1]."""
         if self.samples == 0:
             return 0.0
-        se = (self.p_win * (1 - self.p_win) / self.samples) ** 0.5
+        se: float = (self.p_win * (1 - self.p_win) / self.samples) ** 0.5
         return max(0.0, 1.0 - 4 * se)
 
 

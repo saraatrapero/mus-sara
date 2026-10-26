@@ -3,6 +3,8 @@
 // Dos backends con la misma API: el servidor FastAPI o, en GitHub Pages, el mismo Python
 // ejecutándose en este navegador con Pyodide (worker.js). Lo decide <meta name="musst-backend">.
 
+import * as cloud from "./cloud.js";
+
 const $main = document.getElementById("main");
 const $live = document.getElementById("live");
 const $modal = document.getElementById("modal");
@@ -106,6 +108,7 @@ async function api(path, { method = "GET", body, token } = {}) {
   if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Error del servidor");
   return data;
 }
+const fmtOutcome = (c, v) => (c.ordago && Math.abs(v) === c.envite ? (v > 0 ? "ganas la partida" : "pierdes la partida") : `${v > 0 ? "+" : ""}${v} tantos`);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const h = (html) => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms * (settings.reduce_motion ? 0.2 : settings.speed)));
@@ -133,14 +136,53 @@ function cardLabel(code) {
   const extra = rank === 3 ? " (cuenta como rey)" : rank === 2 ? " (cuenta como as)" : "";
   return `${names[rank]} de ${SUITS[suit].toLowerCase()}${extra}`;
 }
-function cardHTML(code, { small = false, button = false, pressed = false } = {}) {
+// Naipe español dibujado en SVG: índice grande en las esquinas, pintas en el marco (huecos
+// según el palo, como en la baraja española) y figuras reconocibles.
+const PINTAS = { O: 0, C: 1, E: 2, B: 3 };
+const SUIT_COLOR = { O: "#b8860b", C: "#b8323f", E: "#2f5d8a", B: "#3f6b2a" };
+const PIP_LAYOUT = {
+  1: [[30, 46, 2.2]], 2: [[30, 28], [30, 64]], 3: [[30, 24], [30, 46], [30, 68]],
+  4: [[21, 28], [39, 28], [21, 64], [39, 64]], 5: [[21, 26], [39, 26], [30, 46], [21, 66], [39, 66]],
+  6: [[21, 24], [39, 24], [21, 46], [39, 46], [21, 68], [39, 68]],
+  7: [[21, 22], [39, 22], [30, 35], [21, 48], [39, 48], [21, 70], [39, 70]],
+};
+const FIGURE = { 10: "SOTA", 11: "CABALLO", 12: "REY" };
+function suitUse(suit, x, y, scale = 1) {
+  const s = 11 * scale;
+  return `<svg x="${x - s / 2}" y="${y - s / 2}" width="${s}" height="${s}" viewBox="0 0 32 32">${SUIT_SVG[suit].replace(/^<svg[^>]*>|<\/svg>$/g, "")}</svg>`;
+}
+function figureSVG(rank, suit) {
+  const c = SUIT_COLOR[suit];
+  const crown = rank === 12 ? `<path d="M22 26l3-5 3 4 2-5 2 5 3-4 3 5z" fill="#d4a72c" stroke="#7a5a10" stroke-width=".8"/>` : "";
+  const hat = rank === 10 ? `<path d="M23 27q7-7 14 0z" fill="${c}"/>` : "";
+  const horse = rank === 11 ? `<path d="M14 70q4-12 16-12t14 6l3 8h-6l-2-4h-16l-3 4z" fill="#8a5a2b" stroke="#4a2f14" stroke-width=".8"/>` : "";
+  return `<rect x="10" y="15" width="40" height="62" rx="3" fill="#fbf6ea" stroke="${c}" stroke-width="1.2"/>
+    ${horse}${crown}${hat}
+    <circle cx="30" cy="${rank === 11 ? 33 : 32}" r="5" fill="#f1d3b0" stroke="#7a5a3a" stroke-width=".7"/>
+    <path d="M22 ${rank === 11 ? 58 : 66}l2-20h12l2 20z" fill="${c}" opacity=".85"/>
+    ${suitUse(suit, 38, 48, 1.15)}`;
+}
+function cardFace(code) {
   const { rank, suit } = parseCard(code);
+  const c = SUIT_COLOR[suit];
+  const gaps = PINTAS[suit];
+  const frame = gaps === 0 ? `<rect x="3" y="3" width="54" height="84" rx="4" fill="none" stroke="${c}" stroke-width="1.4"/>`
+    : `<path d="${[...Array(gaps + 1)].map((_, i) => `M${4 + i * (52 / (gaps + 1)) + (i ? 3 : 0)} 3h${52 / (gaps + 1) - 3}`).join("")}" stroke="${c}" stroke-width="1.4"/>
+       <path d="${[...Array(gaps + 1)].map((_, i) => `M${4 + i * (52 / (gaps + 1)) + (i ? 3 : 0)} 87h${52 / (gaps + 1) - 3}`).join("")}" stroke="${c}" stroke-width="1.4"/>
+       <path d="M3 6v78M57 6v78" stroke="${c}" stroke-width="1.4"/>`;
+  const pip = rank <= 3 ? 1.7 : rank <= 5 ? 1.45 : 1.25;
+  const body = FIGURE[rank] ? figureSVG(rank, suit) : PIP_LAYOUT[rank].map(([x, y, k]) => suitUse(suit, x, y, k ? k * 1.4 : pip)).join("");
+  const idx = `<text x="7" y="15" font-family="Georgia,serif" font-weight="700" font-size="12" fill="${c}">${rank}</text>`;
+  const idx2 = `<text x="53" y="80" font-family="Georgia,serif" font-weight="700" font-size="12" fill="${c}" text-anchor="end">${rank}</text>`;
+  const fig = FIGURE[rank] ? `<text x="30" y="85" font-size="5.5" text-anchor="middle" fill="#5d625b" letter-spacing=".5">${FIGURE[rank]}</text>` : "";
+  return `<svg class="face" viewBox="0 0 60 90" aria-hidden="true"><rect width="60" height="90" rx="5" fill="#fffdf6"/>${frame}${body}${idx}${idx2}${fig}</svg>`;
+}
+function cardHTML(code, { small = false, button = false, pressed = false } = {}) {
+  const { rank } = parseCard(code);
   const tag = button ? "button" : "div";
   const equiv = rank === 3 ? '<span class="equiv">=R</span>' : rank === 2 ? '<span class="equiv">=A</span>' : "";
   const attrs = button ? ` type="button" data-card="${code}" aria-pressed="${pressed}"` : ' role="img"';
-  return `<${tag} class="card${small ? " small" : ""}"${attrs} aria-label="${cardLabel(code)}">
-    <span class="rank">${RANK_LABEL[rank] ?? rank}</span><span class="suit">${SUIT_SVG[suit]}</span>
-    <span class="suit-name">${SUITS[suit]}</span>${equiv}</${tag}>`;
+  return `<${tag} class="card${small ? " small" : ""}"${attrs} aria-label="${cardLabel(code)}">${cardFace(code)}${equiv}</${tag}>`;
 }
 
 // ------------------------------------------------------------------ textos de eventos
@@ -176,14 +218,97 @@ function eventText(e, names) {
 const BUBBLE = {
   MusRequested: "MUS", MusCut: "CORTO", Passed: "PASO", BetPlaced: "ENVIDO", BetRaised: "REENVÍO",
   BetAccepted: "QUIERO", OrdagoAccepted: "QUIERO", BetRejected: "NO QUIERO", OrdagoDeclared: "ÓRDAGO",
+  PairsDeclared: "PARES", GameDeclared: "JUEGO",
 };
+// Lo que dicen los bots en la mesa (varía para que no suene a máquina).
+const TALK = {
+  MusRequested: ["Mus", "Mus, que estas no valen", "Dame mus"],
+  MusCut: ["No hay mus", "Corto", "Aquí no hay mus"],
+  Passed: ["Paso", "Paso", "Paso, a ver qué decís"],
+  BetPlaced: (p) => (p.amount === 2 ? ["Envido", "Dos a " + LANCE[p.lance].toLowerCase(), "Envido, ¿qué hacéis?"] : [`Envido ${p.amount}`, `${p.amount} a ${LANCE[p.lance].toLowerCase()}`]),
+  BetRaised: (p) => [`${p.amount} más`, `Subo ${p.amount}`, `Y ${p.amount} más`],
+  OrdagoDeclared: () => ["¡ÓRDAGO!", "¡Órdago a " + "la mesa!"],
+  BetAccepted: ["Quiero", "Lo quiero", "Venga, quiero"],
+  OrdagoAccepted: ["¡Quiero!", "¡Lo veo!"],
+  BetRejected: ["No quiero", "Para vosotros", "No, no quiero"],
+  PairsDeclared: (p) => [p.has ? "Pares sí" : "Pares no"],
+  GameDeclared: (p) => [p.has ? "Juego sí" : "Juego no"],
+};
+function talk(e) {
+  const t = TALK[e.kind];
+  const opts = typeof t === "function" ? t(e.payload || {}) : t;
+  if (!opts) return BUBBLE[e.kind];
+  return opts[(e.seq * 7 + (e.actor ?? 0)) % opts.length];
+}
+const BANTER_WIN = ["¡Esa era nuestra!", "Buena jugada, compañero", "Así se juega"];
+const BANTER_LOSE = ["La próxima es nuestra", "Qué cartas más malas…", "Uf, no hubo suerte"];
+
+// Señas oficiales (FEM VIII.2): gesto y significado.
+const SIGNALS = {
+  dos_reyes: ["Morderse el labio inferior", "dos reyes"], dos_ases: ["Sacar la lengua de frente", "dos ases"],
+  pares: ["Girar la cabeza a un lado", "pares"], medias_reyes: ["Labios cerrados hacia un lado", "medias de reyes"],
+  medias_ases: ["Sacar la lengua hacia un lado", "medias de ases"], medias: ["Labios cerrados hacia un lado", "medias"],
+  duples: ["Levantar las cejas", "duples"], juego: ["Labios cerrados hacia afuera", "juego"],
+  treinta_y_una: ["Guiñar un ojo", "la 31"], treinta: ["Alzar los dos hombros", "30 de punto"],
+  veintinueve: ["Alzar un hombro", "29 de punto"], ciego: ["Cerrar los dos ojos", "ciego (nada)"],
+};
+
+// Resumen de la jugada: por qué se ha sumado cada tanto.
+function evalHand(codes) {
+  const cards = codes.map(parseCard).map(({ rank, suit }) => ({ rank: rank === 3 ? 12 : rank === 2 ? 1 : rank, suit }));
+  const counts = {};
+  cards.forEach((c) => { counts[c.rank] = (counts[c.rank] || 0) + 1; });
+  const groups = Object.entries(counts).filter(([, n]) => n >= 2).map(([r, n]) => [Number(r), n]);
+  const rankName = { 1: "ases", 4: "cuatros", 5: "cincos", 6: "seises", 7: "sietes", 10: "sotas", 11: "caballos", 12: "reyes" };
+  let pares = "sin pares";
+  if (groups.length === 2 || groups.some(([, n]) => n === 4)) pares = "duples";
+  else if (groups.some(([, n]) => n === 3)) pares = `medias de ${rankName[groups[0][0]]}`;
+  else if (groups.length === 1) pares = `par de ${rankName[groups[0][0]]}`;
+  const total = cards.reduce((t, c) => t + (c.rank >= 10 ? 10 : c.rank), 0);
+  return { pares, total };
+}
+function roundSummary(obs, round) {
+  const names = obs.seats.map((s) => s.name);
+  const team = (t) => (t === obs.team ? "tu pareja" : "la pareja rival");
+  const ev = obs.history.filter((e) => e.round === round);
+  const hands = ev.find((e) => e.kind === "HandsRevealed")?.payload.hands;
+  const lines = [];
+  const winners = {};
+  ev.filter((e) => e.kind === "LanceResolved").forEach((e) => { winners[e.payload.lance] = e.payload.winner_seat; });
+  for (const e of ev.filter((x) => x.kind === "PointsAwarded")) {
+    const p = e.payload;
+    const w = winners[p.lance];
+    const who = w != null ? names[w] : team(p.team);
+    const lance = LANCE[p.lance] ?? p.lance;
+    let why;
+    switch (p.concept) {
+      case "paso": why = `${lance} en paso: 1 tanto a quien tiene la mejor ${lance.toLowerCase()} (${who}).`; break;
+      case "envite": why = `${lance}: envite de ${p.points} querido; lo gana ${who}.`; break;
+      case "negada": why = `${lance}: no quisieron el envite; 1 tanto en el acto para ${team(p.team)}.`; break;
+      case "envite_no_querido": why = `${lance}: no quisieron el reenvite; ${p.points} tantos en el acto (la apuesta anterior).`; break;
+      case "pares": {
+        const detail = hands ? [p.team, p.team + 2].map((s) => `${names[s]}: ${evalHand(hands[String(s)]).pares}`).join(", ") : "";
+        why = `Pares de ${team(p.team)} (par 1, medias 2, duples 3 por jugador): ${p.points}. ${detail}`; break;
+      }
+      case "juego": {
+        const detail = hands ? [p.team, p.team + 2].map((s) => `${names[s]}: ${evalHand(hands[String(s)]).total}`).join(", ") : "";
+        why = `Juego de ${team(p.team)} (la 31 vale 3, el resto 2 por jugador): ${p.points}. ${detail}`; break;
+      }
+      case "punto": why = `Punto: 1 tanto para ${who}.`; break;
+      default: why = `${lance}: ${p.points} (${p.concept}).`;
+    }
+    lines.push({ team: p.team, points: p.points, why });
+  }
+  const score = ev.filter((e) => e.kind === "RoundFinished").pop()?.payload.score;
+  return { lines, score, hands };
+}
 const SOUND_OF = {
   MusCut: "cut", BetPlaced: "bet", BetRaised: "bet", BetAccepted: "accept", OrdagoAccepted: "accept",
   BetRejected: "reject", OrdagoDeclared: "ordago", PointsAwarded: "points", GameFinished: "end", DealerAssigned: "deal",
 };
 
 // ------------------------------------------------------------------ navegación
-const views = { home, learn, arena, stats, settings: settingsView, game: () => renderGame(), tutorial, training };
+const views = { home, learn, arena, stats, settings: settingsView, game: () => renderGame(), tutorial, training, admin: adminView };
 function go(name, ...args) {
   document.querySelectorAll(".topnav button").forEach((b) => b.setAttribute("aria-current", b.dataset.nav === name ? "page" : "false"));
   $main.innerHTML = "";
@@ -216,7 +341,7 @@ function home() {
     </section>
     <section class="pillars" aria-label="Modos de juego">
       <div class="panel stack">
-        <span class="kicker">Jugar</span><h3>Personalizada</h3>
+        <span class="kicker">Jugar</span><h2 class="card-title">Personalizada</h2>
         <form id="custom" class="stack">
           <div class="form-grid">
             <label class="field">Rivales<select name="rivals"><option value="sencillo">Sencillo</option><option value="medio" selected>Medio</option><option value="profesional">Profesional</option></select></label>
@@ -232,18 +357,18 @@ function home() {
         </form>
       </div>
       <div class="panel stack">
-        <span class="kicker">Entrenar</span><h3>Contra un bot</h3>
+        <span class="kicker">Entrenar</span><h2 class="card-title">Contra un bot</h2>
         <p class="muted">Elige un bot concreto y enfréntate a él tantas veces como quieras.</p>
         <label class="field">Bot<select id="vs-bot"><option value="sencillo">Sencillo</option><option value="medio">Medio</option><option value="profesional">Profesional</option></select></label>
         <button class="btn" id="vs-start">Jugar contra este bot</button>
         <hr style="border:0;border-top:1px solid var(--line);width:100%">
-        <h3>Entrenamiento</h3>
+        <h2 class="card-title">Entrenamiento</h2>
         <p class="muted">Sin presión: con el asistente de reglas abierto y análisis al terminar.</p>
         <button class="btn" id="train-game">Partida de entrenamiento</button>
         <button class="btn ghost" data-nav="training">Situaciones de entrenamiento</button>
       </div>
       <div class="panel stack">
-        <span class="kicker">Continuar</span><h3>Tus partidas</h3>
+        <span class="kicker">Continuar</span><h2 class="card-title">Tus partidas</h2>
         <div id="resume" class="stack muted">Inicia sesión para guardar tu historial, estadísticas y logros.</div>
       </div>
     </section>
@@ -341,23 +466,45 @@ function renderGame(bubbles = {}) {
     const revealed = obs.revealed_hands && obs.revealed_hands[String(s.seat)];
     const cards = s.seat === me ? "" : revealed
       ? `<div class="hand">${revealed.map((c) => cardHTML(c, { small: true })).join("")}</div>`
-      : `<div class="backs" aria-label="4 cartas ocultas">${'<span class="back"></span>'.repeat(4)}</div>`;
+      : `<div class="backs" role="img" aria-label="4 cartas ocultas">${'<span class="back"></span>'.repeat(4)}</div>`;
     const avatar = s.kind === "bot" ? "🤖" : esc(s.avatar || "🧑");
     const bubble = bubbles[s.seat] ? `<span class="bubble ${bubbles[s.seat] === "ÓRDAGO" ? "ordago" : ""}">${bubbles[s.seat]}</span>` : "";
     const status = s.waiting ? '<span class="chip">esperando…</span>' : !s.connected ? '<span class="chip">desconectado</span>' : "";
-    return `<div class="seat ${pos} ${obs.turn === s.seat ? "turn" : ""}" style="--team-color:var(${s.team === 0 ? "--team-a" : "--team-b"})">
-      ${bubble}<div class="avatar" aria-hidden="true">${avatar}</div>
+    const target = obs.gazes && obs.gazes.length ? obs.gazes[s.seat] : undefined;
+    const lookPos = target == null ? "mesa" : seatPosition(target, me);
+    const gaze = target === undefined ? "" : `<span class="chip gaze ${target === me && s.seat !== me ? "on-me" : ""}" title="Hacia dónde mira">👀 ${target == null ? "la mesa" : target === me ? (s.seat === me ? "" : "te mira") : esc(names[target])}</span>`;
+    return `<div class="seat ${pos} ${obs.turn === s.seat && !obs.awaiting_deal ? "turn" : ""}" style="--team-color:var(${s.team === 0 ? "--team-a" : "--team-b"})">
+      ${bubble}<div class="avatar look-${pos}-${lookPos}" aria-hidden="true">${avatar}</div>
       <div class="seat-name">${esc(s.name)}${s.seat === me ? " (tú)" : ""}${s.level ? ` <span class="chip">${esc(s.level)}</span>` : ""}</div>
-      <div class="seat-meta"><span class="chip">${s.team === 0 ? "◆ Pareja A" : "● Pareja B"}</span>${obs.mano === s.seat ? '<span class="chip mano">mano</span>' : ""}${decl("pares")}${decl("juego")}${status}</div>
+      <div class="seat-meta"><span class="chip">${s.team === 0 ? "◆ Pareja A" : "● Pareja B"}</span>${obs.mano === s.seat ? '<span class="chip mano">mano</span>' : ""}${decl("pares")}${decl("juego")}${status}${gaze}</div>
       ${pos === "bottom" ? "" : cards}</div>`;
   };
   const bet = obs.current_bet;
   const betInfo = bet ? (bet.is_ordago ? `Órdago de la pareja ${bet.bettor_team === 0 ? "A" : "B"}` : `En juego: ${bet.stake} tantos`) : "";
   const finished = obs.finished;
-  const myTurn = obs.turn === me && !finished;
+  const myTurn = obs.turn === me && !finished && !obs.awaiting_deal;
+  const dealerPos = seatPosition(obs.dealer, me);
+  const deck = `<div class="deck deck-${dealerPos}" aria-label="Baraja, a la derecha de ${esc(names[obs.dealer])} (reparte)" role="img">
+    ${'<span class="back"></span>'.repeat(4)}<small>Reparte ${esc(names[obs.dealer])}</small></div>`;
+  const prev = obs.awaiting_deal && obs.round > 1 ? roundSummary(obs, obs.round - 1) : null;
+  const dealPanel = obs.awaiting_deal ? `<div class="deal-panel panel stack" role="region" aria-label="Antes de repartir">
+      ${prev ? `<h2 class="card-title">Resumen de la jugada ${obs.round - 1}</h2>
+        <ul class="round-points">${prev.lines.map((l) => `<li class="${l.team === myTeam ? "mine" : "theirs"}"><strong>+${l.points}</strong> ${esc(l.why)}</li>`).join("") || "<li>Nadie sumó tantos.</li>"}</ul>
+        ${prev.hands ? `<div class="shown-hands">${obs.seats.map((s) => `<div><small>${esc(s.name)}</small><div class="hand">${prev.hands[String(s.seat)].map((c) => cardHTML(c, { small: true })).join("")}</div></div>`).join("")}</div>` : ""}
+        ${prev.score ? `<p><strong>Marcador:</strong> tu pareja ${prev.score[myTeam]} – ${prev.score[1 - myTeam]} rivales (se gana a ${obs.target}).</p>` : ""}` : ""}
+      <p>${obs.dealer === me ? "Te toca repartir." : `Reparte ${esc(names[obs.dealer])}; la baraja está a su derecha.`} Es mano ${esc(names[obs.mano])}.</p>
+      <button class="btn primary" id="deal-btn">${obs.dealer === me ? "Repartir" : "¿Repartimos? Sí"}</button></div>` : "";
+  const watching = (obs.gazes || []).map((g, s) => (g === me && s !== me ? s : null)).filter((s) => s != null);
+  const seen = Object.entries(obs.signals_seen || {}).filter(([s]) => Number(s) !== me);
+  const signalPanel = (obs.available_signals || []).length || seen.length ? `<div class="signals panel" role="region" aria-label="Señas">
+      ${seen.length ? `<p class="seen">${seen.map(([s, list]) => `<strong>${esc(names[s])}</strong> ${Number(s) === obs.partner ? "(compañero)" : "(rival)"} ha hecho seña: ${list.map((x) => esc(SIGNALS[x]?.[1] ?? x)).join(", ")}`).join("<br>")}</p>` : ""}
+      ${(obs.available_signals || []).length ? `<p class="muted">Seña (solo la verán quienes te miren ahora): ${watching.length ? watching.map((s) => `${esc(names[s])}${s === obs.partner ? " ✔" : " ⚠ rival"}`).join(", ") : "nadie te mira"}</p>
+        <div class="row">${obs.available_signals.map((x) => `<button class="btn small-btn" data-signal="${x}" title="${esc(SIGNALS[x]?.[0] ?? "")}">${esc(SIGNALS[x]?.[0] ?? x)} · <em>${esc(SIGNALS[x]?.[1] ?? "")}</em></button>`).join("")}</div>` : ""}
+    </div>` : "";
   $main.innerHTML = "";
   $main.append(h(`
   <div class="game">
+    <h1 class="sr-only">Mesa de juego</h1>
     <div class="scorebar" role="region" aria-label="Marcador">
       <div><div class="lances" aria-label="Lances">${lanceBar}</div><small class="muted">Jugada ${obs.round} · a ${obs.target} tantos · ${current.obs.mode}</small></div>
       <div class="scores">${scoreLine(myTeam)}${scoreLine(1 - myTeam)}</div>
@@ -365,13 +512,16 @@ function renderGame(bubbles = {}) {
     ${obs.invite ? `<div class="invite">Invita a tu compañero: comparte este enlace <code>${location.origin}${location.pathname}#join/${obs.game_id}/${obs.invite}</code></div>` : ""}
     <div class="table" role="region" aria-label="Mesa de Mus">
       ${obs.seats.filter((s) => s.seat !== me).map(seatHTML).join("")}
-      <div class="center"><div><div class="lance-title">${esc(phaseName)}</div><div class="bet-info">${esc(betInfo)}</div>
-        <div class="bet-info">${finished ? (obs.winner === myTeam ? "¡Habéis ganado!" : "Ha ganado la pareja rival") : myTurn ? "Te toca" : `Habla ${esc(names[obs.turn] ?? "")}`}</div></div></div>
+      <div class="center"><div><div class="lance-title">${obs.awaiting_deal ? "Reparto" : esc(phaseName)}</div><div class="bet-info">${esc(betInfo)}</div>
+        <div class="bet-info">${finished ? (obs.winner === myTeam ? "¡Habéis ganado!" : "Ha ganado la pareja rival") : obs.awaiting_deal ? "Esperando para repartir" : myTurn ? "Te toca" : `Habla ${esc(names[obs.turn] ?? "")}`}</div></div></div>
       ${seatHTML(obs.seats[me])}
+      ${finished ? "" : deck}
     </div>
+    ${dealPanel}
     <div class="hand" id="my-hand" aria-label="Tus cartas">${obs.hand.map((c) => cardHTML(c, { button: obs.phase === "discard" && myTurn, pressed: current.discard.has(c) })).join("")}</div>
     <div class="status-line" id="status"></div>
     <div class="actions" id="actions" role="group" aria-label="Acciones disponibles"></div>
+    ${signalPanel}
     <div class="row" style="justify-content:center">
       <button class="btn ghost" id="help-btn" aria-expanded="${current.help}">? ¿Qué puedo hacer?</button>
       ${finished ? '<button class="btn primary" id="summary-btn">Ver resumen</button>' : ""}
@@ -380,6 +530,9 @@ function renderGame(bubbles = {}) {
     <div id="help" class="help-panel" ${current.help ? "" : "hidden"}></div>
   </div>`));
   renderActions();
+  document.getElementById("deal-btn")?.addEventListener("click", dealCards);
+  document.querySelectorAll("[data-signal]").forEach((b) => (b.onclick = () => makeSignal(b.dataset.signal)));
+  scheduleTick();
   document.getElementById("help-btn").onclick = () => { current.help = !current.help; renderGame(); };
   document.getElementById("log-btn").onclick = () => showLog();
   if (finished) document.getElementById("summary-btn").onclick = () => showSummary();
@@ -398,7 +551,7 @@ function renderActions() {
   const $a = document.getElementById("actions");
   if (!$a) return;
   $a.innerHTML = "";
-  if (obs.finished || obs.turn !== obs.seat) return;
+  if (obs.finished || obs.turn !== obs.seat || obs.awaiting_deal) return;
   const specs = Object.fromEntries(obs.legal_actions.map((s) => [s.type, s]));
   const add = (label, cls, action, key) => {
     const b = document.createElement("button");
@@ -475,11 +628,26 @@ async function animateTo(obs) {
     if (text) announce(text);
     if (bubble && e.round === prevRound && e.actor !== obs.seat) {
       setStatus(text);
-      renderGame({ [e.actor]: bubble });
-      await sleep(420);
+      renderGame({ [e.actor]: talk(e) });
+      await sleep(e.kind === "PairsDeclared" || e.kind === "GameDeclared" ? 700 : 1300);
     } else if (e.kind === "HandsRevealed" && e.round === prevRound) {
       setStatus("Se enseñan las cartas");
-      await sleep(250);
+      current.obs = { ...current.obs, revealed_hands: e.payload.hands };
+      renderGame();
+      await sleep(1800);
+    } else if (e.kind === "SignalSeen" || (e.kind === "SignalMade" && e.actor !== obs.seat)) {
+      const from = e.payload.seat;
+      toast(`👁 Has visto a ${names[from]} ${SIGNALS[e.payload.signal]?.[0]?.toLowerCase() ?? "hacer una seña"}: ${SIGNALS[e.payload.signal]?.[1] ?? ""}`);
+    } else if (e.kind === "RoundFinished" && e.round === prevRound) {
+      const lastPts = obs.history.filter((x) => x.round === prevRound && x.kind === "PointsAwarded");
+      const mine = lastPts.filter((x) => x.payload.team === obs.team).reduce((t, x) => t + x.payload.points, 0);
+      const theirs = lastPts.filter((x) => x.payload.team !== obs.team).reduce((t, x) => t + x.payload.points, 0);
+      const bot = obs.seats.find((s) => s.kind === "bot" && s.team !== obs.team) || obs.seats.find((s) => s.kind === "bot");
+      if (bot) {
+        const pool = (bot.team === obs.team ? mine >= theirs : theirs > mine) ? BANTER_WIN : BANTER_LOSE;
+        renderGame({ [bot.seat]: pool[e.seq % pool.length] });
+        await sleep(1200);
+      }
     }
   }
   current.seen = maxSeq(obs);
@@ -487,8 +655,76 @@ async function animateTo(obs) {
   renderGame();
   const last = fresh.filter((e) => e.kind === "RoundFinished").pop();
   if (last) setStatus(`Fin de la jugada: ${last.payload.score[0]} – ${last.payload.score[1]}`);
-  if (obs.finished) { store.set("musst.current", null); setTimeout(showSummary, 600); }
+  if (obs.finished) { store.set("musst.current", null); setTimeout(showSummary, 600); syncFinishedGame(obs.game_id); }
 }
+// Reparto: se pregunta antes y se ve cómo van saliendo las cartas de la baraja, de una en
+// una y en sentido antihorario empezando por el mano (FEM III.2).
+async function dealCards() {
+  if (current.busy) return;
+  current.busy = true;
+  try {
+    const obs = await api(`/api/games/${current.id}/deal`, { method: "POST", token: current.token });
+    play("deal");
+    await animateDeal(obs);
+    current.busy = false;
+    await animateTo(obs);
+  } catch (err) { toast(err.message); } finally { current.busy = false; }
+}
+async function animateDeal(obs) {
+  const table = document.querySelector(".table");
+  const deck = document.querySelector(".deck");
+  if (!table || !deck || settings.reduce_motion) return;
+  const me = obs.seat;
+  const from = deck.getBoundingClientRect();
+  const origin = table.getBoundingClientRect();
+  const order = [0, 1, 2, 3].map((i) => (obs.mano + i) % 4);
+  for (let round = 0; round < 4; round += 1) {
+    for (const seat of order) {
+      const target = document.querySelector(`.seat.${seatPosition(seat, me)} .avatar`);
+      if (!target) continue;
+      const to = target.getBoundingClientRect();
+      const card = document.createElement("span");
+      card.className = "back flying";
+      card.style.left = `${from.left - origin.left}px`;
+      card.style.top = `${from.top - origin.top}px`;
+      table.append(card);
+      requestAnimationFrame(() => {
+        card.style.transform = `translate(${to.left - from.left + round * 6}px, ${to.top - from.top + 20}px) rotate(${round * 8 - 12}deg)`;
+      });
+      await sleep(110);
+    }
+  }
+  await sleep(500);
+  table.querySelectorAll(".flying").forEach((c) => c.remove());
+}
+
+async function makeSignal(signal) {
+  try {
+    const obs = await api(`/api/games/${current.id}/signal`, { method: "POST", body: { signal }, token: current.token });
+    const made = obs.history.filter((e) => e.kind === "SignalMade" && e.actor === obs.seat).pop();
+    const names = obs.seats.map((s) => s.name);
+    const seenBy = made ? made.payload.seen_by : [];
+    toast(seenBy.length ? `Te han visto: ${seenBy.map((s) => names[s] + (s === obs.partner ? " (compañero)" : " (rival)")).join(", ")}` : "Nadie te miraba: la seña se ha perdido");
+    current.obs = obs; current.seen = maxSeq(obs);
+    renderGame();
+  } catch (err) { toast(err.message); }
+}
+
+// Reloj de la mesa: las miradas cambian con el tiempo y los bots pueden hacer señas.
+let tickTimer;
+function scheduleTick() {
+  clearTimeout(tickTimer);
+  const obs = current?.obs;
+  if (!obs || obs.finished || obs.awaiting_deal || !obs.gazes || !obs.gazes.length) return;
+  tickTimer = setTimeout(async () => {
+    if (!current || current.busy || !document.querySelector(".game")) return;
+    try {
+      const fresh = await api(`/api/games/${current.id}/tick`, { method: "POST", token: current.token });
+      if (!current.busy) await animateTo(fresh);
+    } catch { scheduleTick(); }
+  }, 2200 * settings.speed);
+}
+
 function setStatus(text) { const el = document.getElementById("status"); if (el && text) el.textContent = text; }
 
 let pollTimer;
@@ -525,7 +761,7 @@ async function showSummary() {
     const won = a.result.winner === a.result.my_team;
     const s = a.stats;
     openModal(`
-      <h2 id="modal-title">${won ? "Victoria" : "Derrota"} · ${a.result.score[a.result.my_team]} – ${a.result.score[1 - a.result.my_team]}</h2>
+      <h2 id="modal-title">${won ? "Victoria" : "Derrota"} · ${a.result.reason === "ordago" ? "por órdago" : `${a.result.score[a.result.my_team]} – ${a.result.score[1 - a.result.my_team]}`}</h2>
       <h3>Momentos clave</h3>
       <ul>${a.key_moments.map((m) => `<li>Jugada ${m.round_no}: ${esc(m.description)}</li>`).join("") || "<li>Partida tranquila.</li>"}</ul>
       <h3>Tu partida</h3>
@@ -535,6 +771,7 @@ async function showSummary() {
         <tr><td>Mus / cortes</td><td>${s.mus} / ${s.cortes}</td></tr>
         <tr><td>Envites con mano débil</td><td>${s.frecuencia_farol == null ? "—" : Math.round(s.frecuencia_farol * 100) + " %"}</td></tr>
       </tbody></table></div>
+      ${(a.counterfactuals || []).length ? `<h3>¿Y si hubieras elegido lo contrario?</h3><ul>${a.counterfactuals.map((c) => `<li>Jugada ${c.jugada}, ${esc(c.lance)} ${c.ordago ? "(órdago)" : `(envite de ${c.envite})`}: elegiste <strong>${c.elegiste}</strong> → ${fmtOutcome(c, c.tantos)}; lo contrario → ${fmtOutcome(c, c.alternativa)}. ${c.acierto ? "✓ Buena decisión" : "✗ Lo contrario era mejor"}</li>`).join("")}</ul><p class="muted">Calculado con las manos ya reveladas, solo al terminar la partida.</p>` : ""}
       ${a.learning.length ? `<h3>Aprendizaje del bot</h3><ul>${a.learning.map((l) => `<li>${esc(l)}</li>`).join("")}</ul>` : ""}
       <div class="row" style="margin-top:12px">
         <button class="btn primary" id="again">Otra partida</button>
@@ -559,7 +796,7 @@ function replayFromHistory(history, seats) {
   let i = 0; let timer = null;
   $main.innerHTML = "";
   $main.append(h(`<div class="page stack">
-    <h2>Replay</h2>
+    <h1 class="page-title">Replay</h1>
     <div class="table" style="min-height:260px" id="replay-table"></div>
     <div class="replay-controls" role="group" aria-label="Controles de reproducción">
       <button class="btn" id="r-first" aria-label="Principio">⏮</button><button class="btn" id="r-prev" aria-label="Anterior">◀</button>
@@ -580,7 +817,7 @@ function replayFromHistory(history, seats) {
     const seatsHTML = seats.map((s) => `<div class="seat ${seatPosition(s.seat, 0)}">
       ${cur && cur.actor === s.seat && BUBBLE[cur.kind] ? `<span class="bubble">${BUBBLE[cur.kind]}</span>` : ""}
       <div class="avatar">${s.kind === "bot" ? "🤖" : "🧑"}</div><div class="seat-name">${esc(s.name)}</div>
-      ${hands ? `<div class="hand">${hands[String(s.seat)].map((c) => cardHTML(c, { small: true })).join("")}</div>` : '<div class="backs">' + '<span class="back"></span>'.repeat(4) + "</div>"}</div>`).join("");
+      ${hands ? `<div class="hand">${hands[String(s.seat)].map((c) => cardHTML(c, { small: true })).join("")}</div>` : '<div class="backs" role="img" aria-label="Mano no revelada">' + '<span class="back"></span>'.repeat(4) + "</div>"}</div>`).join("");
     document.getElementById("replay-table").innerHTML = seatsHTML +
       `<div class="center"><div><div class="lance-title">${esc(lance)}</div><div class="bet-info">A ${score[0]} – B ${score[1]}</div><div class="bet-info">${esc(cur ? eventText(cur, names) : "")}</div></div></div>`;
     const log = document.getElementById("r-log");
@@ -603,15 +840,15 @@ function replayFromHistory(history, seats) {
 // ------------------------------------------------------------------ APRENDER
 function learn() {
   $main.append(h(`<div class="page stack">
-    <h2>Aprender</h2>
+    <h1 class="page-title">Aprender</h1>
     <div class="pillars">
-      <div class="panel stack"><span class="kicker">Desde cero</span><h3>Tutorial interactivo</h3>
+      <div class="panel stack"><span class="kicker">Desde cero</span><h2 class="card-title">Tutorial interactivo</h2>
         <p class="muted">Cartas, mano, mus, grande, chica, pares, juego, punto, envites, órdago y tanteo, con ejemplos.</p>
         <button class="btn primary" data-nav="tutorial">Empezar el tutorial</button></div>
-      <div class="panel stack"><span class="kicker">Practicando</span><h3>Aprender jugando</h3>
+      <div class="panel stack"><span class="kicker">Practicando</span><h2 class="card-title">Aprender jugando</h2>
         <p class="muted">Una partida tranquila contra bots sencillos con el asistente de reglas siempre abierto.</p>
         <button class="btn" id="learn-play">Jugar aprendiendo</button></div>
-      <div class="panel stack"><span class="kicker">Decisiones</span><h3>Situaciones de entrenamiento</h3>
+      <div class="panel stack"><span class="kicker">Decisiones</span><h2 class="card-title">Situaciones de entrenamiento</h2>
         <p class="muted">Situaciones concretas («vas 35-38, te envidan 4…»). Decide y mira el análisis.</p>
         <button class="btn" data-nav="training">Ver situaciones</button></div>
     </div></div>`));
@@ -646,7 +883,7 @@ function tutorial(step = 0) {
   const s = TUTORIAL[step];
   $main.innerHTML = "";
   $main.append(h(`<div class="page"><div class="panel tutorial-step">
-    <span class="kicker">Paso ${step + 1} de ${TUTORIAL.length}</span><h2>${s.t}</h2>
+    <span class="kicker">Paso ${step + 1} de ${TUTORIAL.length}</span><h1 class="page-title">${s.t}</h1>
     ${s.c.length ? `<div class="example">${s.c.map((c) => cardHTML(c)).join("")}</div>` : ""}
     <p>${s.p}</p>
     <div class="row"><button class="btn" id="t-prev" ${step === 0 ? "disabled" : ""}>Anterior</button>
@@ -660,7 +897,7 @@ function tutorial(step = 0) {
 }
 
 async function training() {
-  $main.append(h('<div class="page stack"><h2>Situaciones de entrenamiento</h2><div id="sc" class="stack"></div></div>'));
+  $main.append(h('<div class="page stack"><h1 class="page-title">Situaciones de entrenamiento</h1><div id="sc" class="stack"></div></div>'));
   try {
     const list = await api("/api/training/scenarios");
     const box = document.getElementById("sc");
@@ -671,7 +908,7 @@ async function training() {
         const action = a.type === "bet" || a.type === "raise" ? { type: a.type, amount: 2 } : { type: a.type };
         return `<button class="act ${a.type === "ordago" ? "ordago" : ""}" data-sc="${sc.id}" data-action='${JSON.stringify(action)}'>${label}</button>`;
       }).join("");
-      return `<div class="panel stack"><h3>${esc(sc.title)}</h3><p>${esc(sc.prompt)}</p>
+      return `<div class="panel stack"><h2 class="card-title">${esc(sc.title)}</h2><p>${esc(sc.prompt)}</p>
         <div class="hand">${o.hand.map((c) => cardHTML(c)).join("")}</div>
         <p class="muted">Marcador ${o.score[0]} – ${o.score[1]} · ${o.mano === 0 ? "eres mano" : "no eres mano"}</p>
         <div class="actions">${opts}</div><div class="result" id="res-${sc.id}"></div></div>`;
@@ -691,10 +928,10 @@ async function training() {
 // ------------------------------------------------------------------ COMPETIR
 async function arena() {
   $main.append(h(`<div class="page stack">
-    <h2>Bot Arena</h2>
-    <div class="panel stack"><h3>Clasificación</h3><div class="table-wrap" id="board">Cargando…</div>
+    <h1 class="page-title">Bot Arena</h1>
+    <div class="panel stack"><h2 class="card-title">Clasificación</h2><div class="table-wrap" id="board">Cargando…</div>
       <p class="muted">Torneo automático (todos contra todos, mus duplicado). Un bot que falla pierde la partida sin romper el torneo.</p></div>
-    <div class="panel stack"><h3>Observar Bot vs Bot</h3>
+    <div class="panel stack"><h2 class="card-title">Observar Bot vs Bot</h2>
       <div class="form-grid"><label class="field">Pareja A<select id="wa"></select></label><label class="field">Pareja B<select id="wb"></select></label></div>
       <button class="btn primary" id="watch">Ver partida</button>
       <p class="muted">Solo se muestra información pública: las cartas, al final de cada jugada.</p></div>
@@ -717,12 +954,13 @@ async function arena() {
 
 // ------------------------------------------------------------------ ANALIZAR
 const STYLE_LABEL = {
+  bet_with_strong: "Envida con mano buena", bet_with_weak: "Envida con mano floja", accept_with_weak: "Acepta con mano floja",
   aggression: "Agresividad", risk_tolerance: "Riesgo", bluff_frequency: "Farol", acceptance_rate: "Aceptación",
   rejection_rate: "Rechazo", raise_rate: "Reenvites", ordago_rate: "Órdagos", mus_rate: "Mus",
 };
 async function stats() {
   if (!user) {
-    $main.append(h('<div class="page"><div class="panel stack"><h2>Analizar</h2><p>Inicia sesión para guardar tus partidas y ver tu estilo de juego.</p><button class="btn primary" id="go-login">Entrar o registrarse</button></div></div>'));
+    $main.append(h('<div class="page"><div class="panel stack"><h1 class="page-title">Analizar</h1><p>Inicia sesión para guardar tus partidas y ver tu estilo de juego.</p><button class="btn primary" id="go-login">Entrar o registrarse</button></div></div>'));
     document.getElementById("go-login").onclick = loginDialog;
     return;
   }
@@ -735,23 +973,24 @@ async function stats() {
       return `<svg viewBox="0 0 ${w} ${hgt}" width="100%" height="60" role="img" aria-label="Tantos por partida"><polyline fill="none" stroke="var(--accent)" stroke-width="2" points="${pts}"/></svg>`;
     })() : '<p class="muted">Juega más partidas para ver tu evolución.</p>';
     $main.append(h(`<div class="page stack">
-      <h2>Tu estilo de juego</h2>
+      <h1 class="page-title">Tu estilo de juego</h1>
       <div class="grid-2">
-        <div class="panel"><h3>Resumen</h3><table class="data"><tbody>
+        <div class="panel"><h2 class="card-title">Resumen</h2><table class="data"><tbody>
           <tr><td>Partidas</td><td>${s.partidas}</td></tr><tr><td>Victorias / derrotas</td><td>${s.victorias} / ${s.derrotas}</td></tr>
           <tr><td>% victorias</td><td>${pct(s.porcentaje_victorias)}</td></tr><tr><td>Tantos medios</td><td>${s.tantos_medios == null ? "—" : s.tantos_medios.toFixed(1)}</td></tr>
           <tr><td>Envites / órdagos</td><td>${s.totales.envites ?? 0} / ${s.totales.ordagos ?? 0}</td></tr>
           <tr><td>Aceptaciones / rechazos</td><td>${s.totales.aceptaciones ?? 0} / ${s.totales.rechazos ?? 0}</td></tr>
           <tr><td>Mus</td><td>${s.totales.mus ?? 0}</td></tr></tbody></table></div>
-        <div class="panel stack"><h3>Estilo (estimaciones)</h3>
+        <div class="panel stack"><h2 class="card-title">Estilo (estimaciones)</h2>
+          ${s.perfil ? `<p>La IA te ve como <strong>${esc(s.perfil.label)}</strong> (confianza ${esc(String(s.perfil.confidence).toLowerCase())}).</p>` : ""}
           ${Object.entries(s.estilo).map(([k, v]) => `<div><div class="row" style="justify-content:space-between"><span>${STYLE_LABEL[k] ?? k}</span><span class="muted">${Math.round(v.value * 100)} % · confianza ${v.confidence.toLowerCase()}</span></div><div class="bar"><span style="width:${Math.round(v.value * 100)}%"></span></div></div>`).join("")}
           <p class="muted">Son estadísticas descriptivas con su incertidumbre, no una nota sobre lo bueno que eres.</p></div>
       </div>
-      <div class="panel"><h3>Por lance</h3><div class="table-wrap"><table class="data"><thead><tr><th class="l">Lance</th><th>Envites</th><th>Aceptados</th><th>Rechazados</th><th>Pasos</th></tr></thead><tbody>
+      <div class="panel"><h2 class="card-title">Por lance</h2><div class="table-wrap"><table class="data"><thead><tr><th class="l">Lance</th><th>Envites</th><th>Aceptados</th><th>Rechazados</th><th>Pasos</th></tr></thead><tbody>
         ${Object.entries(s.por_lance).map(([l, d]) => `<tr><td>${LANCE[l]}</td><td>${d.envites ?? 0}</td><td>${d.aceptados ?? 0}</td><td>${d.rechazados ?? 0}</td><td>${d.pasos ?? 0}</td></tr>`).join("")}</tbody></table></div></div>
-      <div class="panel"><h3>Evolución</h3>${spark}</div>
-      <div class="panel"><h3>Logros</h3>${s.logros.length ? s.logros.map((l) => `<span class="badge">🏅 ${esc(l.replaceAll("_", " "))}</span> `).join("") : '<p class="muted">Todavía ninguno.</p>'}</div>
-      <div class="panel"><h3>Historial</h3><div id="hist" class="stack"></div></div>
+      <div class="panel"><h2 class="card-title">Evolución</h2>${spark}</div>
+      <div class="panel"><h2 class="card-title">Logros</h2>${s.logros.length ? s.logros.map((l) => `<span class="badge">🏅 ${esc(l.replaceAll("_", " "))}</span> `).join("") : '<p class="muted">Todavía ninguno.</p>'}</div>
+      <div class="panel"><h2 class="card-title">Historial</h2><div id="hist" class="stack"></div></div>
     </div>`));
     const games = await api("/api/history");
     document.getElementById("hist").innerHTML = games.map((g) => `<div class="row" style="justify-content:space-between"><span>${new Date(g.started_at * 1000).toLocaleString()} · ${esc(g.mode)} · ${g.score ? g.score.join("–") : ""}</span>
@@ -764,7 +1003,7 @@ async function stats() {
 // ------------------------------------------------------------------ ajustes y cuenta
 function settingsView() {
   const opt = (name, values, cur) => values.map(([v, l]) => `<option value="${v}" ${String(cur) === String(v) ? "selected" : ""}>${l}</option>`).join("");
-  $main.append(h(`<div class="page"><div class="panel stack"><h2>Ajustes</h2>
+  $main.append(h(`<div class="page"><div class="panel stack"><h1 class="page-title">Ajustes</h1>
     <form id="sf" class="form-grid">
       <label class="field">Tema<select name="theme">${opt("theme", [["auto", "Automático"], ["light", "Claro"], ["dark", "Oscuro"]], settings.theme)}</select></label>
       <label class="field">Tamaño de texto<select name="text_size">${opt("t", [[0.9, "Pequeño"], [1, "Normal"], [1.15, "Grande"], [1.3, "Muy grande"]], settings.text_size)}</select></label>
@@ -788,7 +1027,10 @@ function loginDialog() {
   openModal(`<h2 id="modal-title">Entrar</h2>
     <form id="lf" class="stack">
       <label class="field">Usuario<input name="username" autocomplete="username" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_.\\-]+"></label>
-      ${LOCAL ? `<p class="muted">Perfil local: tus partidas, estadísticas y lo que el bot aprende de ti se guardan solo en este navegador. No hace falta contraseña.</p>
+      ${LOCAL && cloud.cloudEnabled() ? `<label class="field">Contraseña<input name="password" type="password" autocomplete="current-password" required minlength="8"></label>
+      <p class="muted">Tu cuenta guarda tus partidas y lo que la IA aprende de tu forma de jugar, en cualquier dispositivo.</p>
+      <div class="row"><button class="btn primary" value="login">Entrar</button><button class="btn" value="register">Crear cuenta</button><button class="btn ghost" type="button" data-close>Cancelar</button></div>`
+      : LOCAL ? `<p class="muted">Perfil local: tus partidas, estadísticas y lo que el bot aprende de ti se guardan solo en este navegador. No hace falta contraseña.</p>
       <div class="row"><button class="btn primary" value="login">Usar este perfil</button><button class="btn ghost" type="button" data-close>Cancelar</button></div>`
       : `<label class="field">Contraseña<input name="password" type="password" autocomplete="current-password" required minlength="8"></label>
       <p class="muted">Solo guardamos tu usuario y un hash de la contraseña. Nada más.</p>
@@ -799,7 +1041,14 @@ function loginDialog() {
     const f = new FormData(e.target);
     const kind = e.submitter?.value === "register" ? "register" : "login";
     try {
-      await api(`/api/auth/${kind}`, { method: "POST", body: { username: f.get("username"), password: f.get("password") } });
+      if (LOCAL && cloud.cloudEnabled()) {
+        const prof = kind === "register"
+          ? await cloud.signUp(f.get("username"), f.get("password"))
+          : await cloud.signIn(f.get("username"), f.get("password"));
+        await attachCloudProfile(prof);
+      } else {
+        await api(`/api/auth/${kind}`, { method: "POST", body: { username: f.get("username"), password: f.get("password") } });
+      }
       $modal.close();
       await loadUser();
       toast(kind === "register" ? "Cuenta creada" : `Hola, ${user ? user.username : ""}`);
@@ -811,13 +1060,157 @@ function accountMenu() {
   openModal(`<h2 id="modal-title">${esc(user.username)}</h2><div class="row">
     <button class="btn" id="to-stats">Mis estadísticas</button><button class="btn" id="logout">Salir</button><button class="btn ghost" data-close>Cerrar</button></div>`);
   document.getElementById("to-stats").onclick = () => { $modal.close(); go("stats"); };
-  document.getElementById("logout").onclick = async () => { await api("/api/auth/logout", { method: "POST" }); user = null; $modal.close(); updateAccount(); go("home"); };
+  document.getElementById("logout").onclick = async () => {
+    if (cloud.cloudEnabled()) await cloud.signOut();
+    await api("/api/auth/logout", { method: "POST" }); user = null; $modal.close(); updateAccount(); go("home");
+  };
 }
-function updateAccount() { document.getElementById("account").textContent = user ? user.username : "Entrar"; }
+function updateAccount() {
+  document.getElementById("account").textContent = user ? user.username : "Entrar";
+  const nav = document.querySelector(".topnav");
+  let admin = nav.querySelector('[data-nav="admin"]');
+  if (cloud.isAdmin() && !admin) {
+    admin = document.createElement("button"); admin.dataset.nav = "admin"; admin.textContent = "Admin"; nav.append(admin);
+  } else if (!cloud.isAdmin() && admin) admin.remove();
+}
+// Cuenta en Supabase → perfil local del motor (mismo nombre) + lo que la IA ya sabía.
+async function attachCloudProfile(prof) {
+  if (!prof) return;
+  await api("/api/auth/login", { method: "POST", body: { username: prof.username } });
+  try {
+    const memory = await cloud.pullMemory();
+    await api("/api/cloud/import", { method: "POST", body: memory });
+  } catch (err) { toast(`No se pudo traer tu historial: ${err.message}`); }
+}
+const synced = new Set();
+async function syncFinishedGame(gameId) {
+  if (synced.has(gameId)) return;
+  synced.add(gameId);
+  if (!LOCAL || !cloud.cloudEnabled() || !cloud.cloudProfile() || !user) return;
+  try {
+    const exported = await api(`/api/cloud/export/${gameId}`);
+    await cloud.pushGame(exported);
+    toast("Partida guardada en tu cuenta");
+  } catch (err) { toast(`No se pudo guardar en la nube: ${err.message}`); }
+}
 async function loadUser() {
   try { user = await api("/api/me"); } catch { user = null; }
   if (user && user.settings && Object.keys(user.settings).length) { settings = { ...settings, ...user.settings }; applySettings(); }
   updateAccount();
+}
+
+// ------------------------------------------------------------------ administración
+// Panel del administrador: usuarios (crear, editar, borrar), actividad, resultados contra cada
+// nivel de bot, estilos de juego que la IA ha detectado y autocrítica de los bots.
+const pct = (v) => (v == null || Number.isNaN(v) ? "—" : `${Math.round(v * 100)} %`);
+const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" }) : "—");
+function barChart(rows, { label, unit = "", max } = {}) {
+  // Una sola serie: barras con extremo redondeado, valor al pasar el ratón (title) y tabla equivalente.
+  const top = max ?? Math.max(1, ...rows.map((r) => r.value));
+  const w = 640, hgt = 160, gap = 2, bw = Math.max(4, (w - gap * rows.length) / Math.max(1, rows.length));
+  const bars = rows.map((r, i) => {
+    const bh = Math.round((r.value / top) * (hgt - 20));
+    return `<g><title>${esc(r.label)}: ${r.value}${unit}</title><rect class="hit" x="${i * (bw + gap)}" y="0" width="${bw}" height="${hgt}" fill="transparent"/>
+      <rect x="${i * (bw + gap)}" y="${hgt - bh}" width="${bw}" height="${bh}" rx="${Math.min(4, bw / 2)}" fill="var(--accent)"/></g>`;
+  }).join("");
+  return `<figure class="chart"><svg viewBox="0 0 ${w} ${hgt}" width="100%" role="img" aria-label="${esc(label)}">
+    <line x1="0" x2="${w}" y1="${hgt - 0.5}" y2="${hgt - 0.5}" stroke="var(--line)"/>${bars}</svg>
+    <figcaption class="muted">${esc(label)} · máximo ${top}${unit}</figcaption></figure>`;
+}
+async function adminView() {
+  if (!cloud.isAdmin()) { go("home"); return; }
+  $main.append(h('<div class="page stack"><h1 class="page-title">Administración</h1><div id="adm">Cargando…</div></div>'));
+  let d;
+  try { d = await cloud.adminData(); } catch (err) { document.getElementById("adm").textContent = err.message; return; }
+  const byUser = Object.fromEntries(d.users.map((u) => [u.id, { ...u, games: [], model: null }]));
+  d.games.forEach((g) => byUser[g.user_id]?.games.push(g));
+  d.models.forEach((m) => { if (byUser[m.user_id]) byUser[m.user_id].model = m; });
+  const users = Object.values(byUser);
+  const wins = d.games.filter((g) => g.won).length;
+  const week = Date.now() - 7 * 864e5;
+  const active = users.filter((u) => u.games.some((g) => new Date(g.created_at) > week)).length;
+  // actividad: partidas por día, últimos 30 días
+  const days = [...Array(30)].map((_, i) => { const t = new Date(Date.now() - (29 - i) * 864e5); return t.toISOString().slice(0, 10); });
+  const perDay = days.map((day) => ({ label: day, value: d.games.filter((g) => g.created_at.slice(0, 10) === day).length }));
+  const levels = ["sencillo", "medio", "profesional"].map((lv) => {
+    const gs = d.games.filter((g) => g.rivals === lv);
+    return { lv, n: gs.length, rate: gs.length ? gs.filter((g) => g.won).length / gs.length : null };
+  });
+  const styles = {};
+  users.forEach((u) => { const s = u.model?.style || "sin datos aún"; styles[s] = (styles[s] || 0) + 1; });
+  const review = d.memory.find((m) => m.key === "self:profesional")?.data;
+  const mistakeRows = review ? Object.entries(review.mistakes).map(([k, [e, n]]) => { const [lance, kind] = k.split("|"); return { lance, kind, e, n }; }).filter((r) => r.kind !== "pass").sort((a, b) => b.n - a.n) : [];
+  const calib = review ? Object.entries(review.calibration).reduce((acc, [k, [w, n]]) => { const b = Number(k.split("|")[1]); acc[b] = acc[b] || [0, 0]; acc[b][0] += w; acc[b][1] += n; return acc; }, {}) : {};
+  const el = document.getElementById("adm");
+  el.innerHTML = `
+    <div class="tiles">
+      <div class="tile"><span>Usuarios</span><strong>${users.length}</strong><small>${users.filter((u) => u.role === "admin").length} admin</small></div>
+      <div class="tile"><span>Activos 7 días</span><strong>${active}</strong></div>
+      <div class="tile"><span>Partidas</span><strong>${d.games.length}</strong></div>
+      <div class="tile"><span>Victorias de humanos</span><strong>${pct(d.games.length ? wins / d.games.length : null)}</strong></div>
+      <div class="tile"><span>Decisiones revisadas por el bot</span><strong>${review ? Object.values(review.calibration).reduce((t, [, n]) => t + n, 0) : 0}</strong><small>${review ? review.games : 0} revisiones</small></div>
+    </div>
+    <div class="panel"><h2 class="card-title">Partidas por día (30 días)</h2>${barChart(perDay, { label: "Partidas por día" })}</div>
+    <div class="grid-2">
+      <div class="panel"><h2 class="card-title">Humanos contra cada nivel</h2><table class="data"><thead><tr><th class="l">Rivales</th><th>Partidas</th><th>% victorias humanas</th></tr></thead>
+        <tbody>${levels.map((l) => `<tr><td class="l">${l.lv}</td><td>${l.n}</td><td>${pct(l.rate)}</td></tr>`).join("")}</tbody></table></div>
+      <div class="panel"><h2 class="card-title">Estilos detectados por la IA</h2><table class="data"><tbody>${Object.entries(styles).map(([s, n]) => `<tr><td class="l">${esc(s)}</td><td>${n}</td></tr>`).join("")}</tbody></table></div>
+    </div>
+    <div class="panel stack"><div class="row" style="justify-content:space-between"><h2 class="card-title">Usuarios</h2><button class="btn primary" id="adm-new">Crear usuario</button></div>
+      <div class="table-wrap"><table class="data" id="adm-users"><thead><tr><th class="l">Usuario</th><th>Rol</th><th>Alta</th><th>Última vez</th><th>Partidas</th><th>% victorias</th><th class="l">Estilo</th><th></th></tr></thead><tbody>
+      ${users.map((u) => `<tr><td class="l"><button class="link" data-detail="${u.id}">${esc(u.username)}</button></td><td>${u.role}</td><td>${fmtDate(u.created_at)}</td><td>${fmtDate(u.last_seen)}</td>
+        <td>${u.games.length}</td><td>${pct(u.games.length ? u.games.filter((g) => g.won).length / u.games.length : null)}</td><td class="l">${esc(u.model?.style || "—")}</td>
+        <td><button class="btn small-btn" data-edit="${u.id}">Editar</button> <button class="btn small-btn" data-del="${u.id}">Borrar</button></td></tr>`).join("")}
+      </tbody></table></div></div>
+    <div class="grid-2">
+      <div class="panel"><h2 class="card-title">Autocrítica del bot profesional: errores por lance</h2>${mistakeRows.length ? `<table class="data"><thead><tr><th class="l">Lance</th><th class="l">Decisión</th><th>Veces</th><th>% errores</th></tr></thead><tbody>
+        ${mistakeRows.slice(0, 12).map((r) => `<tr><td class="l">${r.lance}</td><td class="l">${r.kind}</td><td>${Math.round(r.n)}</td><td>${pct(r.e / r.n)}</td></tr>`).join("")}</tbody></table>` : '<p class="muted">Aún no hay partidas revisadas.</p>'}</div>
+      <div class="panel"><h2 class="card-title">Calibración: lo que creía vs. lo que pasó</h2>${Object.keys(calib).length ? `<table class="data"><thead><tr><th class="l">Creía ganar</th><th>Ganó de verdad</th><th>Casos</th></tr></thead><tbody>
+        ${Object.entries(calib).sort((a, b) => a[0] - b[0]).map(([b, [w, n]]) => `<tr><td class="l">${b * 10}–${b * 10 + 10} %</td><td>${pct(w / n)}</td><td>${Math.round(n)}</td></tr>`).join("")}</tbody></table>
+        <p class="muted">Si "ganó de verdad" se aleja del tramo, el bot corrige sus estimaciones en las siguientes partidas.</p>` : '<p class="muted">Sin datos todavía.</p>'}</div>
+    </div>`;
+  document.getElementById("adm-new").onclick = () => userDialog();
+  el.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => userDialog(byUser[b.dataset.edit])));
+  el.querySelectorAll("[data-del]").forEach((b) => (b.onclick = () => deleteDialog(byUser[b.dataset.del])));
+  el.querySelectorAll("[data-detail]").forEach((b) => (b.onclick = () => userDetail(byUser[b.dataset.detail])));
+}
+function userDialog(u = null) {
+  openModal(`<h2 id="modal-title">${u ? `Editar ${esc(u.username)}` : "Crear usuario"}</h2>
+    <form id="uf" class="stack">
+      <label class="field">Usuario<input name="username" value="${u ? esc(u.username) : ""}" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_.\\-]+"></label>
+      <label class="field">Rol<select name="role"><option value="player" ${u?.role === "player" ? "selected" : ""}>Jugador</option><option value="admin" ${u?.role === "admin" ? "selected" : ""}>Administrador</option></select></label>
+      <label class="field">${u ? "Nueva contraseña (vacío = no cambiar)" : "Contraseña"}<input name="password" type="password" ${u ? "" : "required"} minlength="8" autocomplete="new-password"></label>
+      <div class="row"><button class="btn primary">${u ? "Guardar" : "Crear"}</button><button class="btn ghost" type="button" data-close>Cancelar</button></div>
+    </form>`);
+  document.getElementById("uf").onsubmit = async (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    try {
+      if (u) await cloud.adminUpdateUser(u.id, { username: f.get("username") !== u.username ? f.get("username") : null, role: f.get("role") !== u.role ? f.get("role") : null, password: f.get("password") || null });
+      else await cloud.adminCreateUser(f.get("username"), f.get("password"), f.get("role"));
+      $modal.close(); toast(u ? "Usuario actualizado" : "Usuario creado"); go("admin");
+    } catch (err) { toast(err.message); }
+  };
+}
+function deleteDialog(u) {
+  openModal(`<h2 id="modal-title">¿Borrar a ${esc(u.username)}?</h2><p>Se borran su cuenta, sus ${u.games.length} partidas y lo que la IA había aprendido de su juego. No se puede deshacer.</p>
+    <div class="row"><button class="btn primary" id="del-yes">Borrar definitivamente</button><button class="btn ghost" data-close>Cancelar</button></div>`);
+  document.getElementById("del-yes").onclick = async () => {
+    try { await cloud.adminDeleteUser(u.id); $modal.close(); toast("Usuario borrado"); go("admin"); } catch (err) { toast(err.message); }
+  };
+}
+function userDetail(u) {
+  const rates = u.model?.model?.rates || {};
+  const rate = (m) => { const r = rates[`${m}|*|*`]; return r && r[1] ? r[0] / r[1] : null; };
+  const stake = (b) => { const s = u.model?.model?.stakes?.[`*|${b}`]; return s && s[1] ? (s[0] / s[1]).toFixed(1) : "—"; };
+  const metrics = [["Agresividad (envida cuando abre)", "aggression"], ["Envida con mano buena", "bet_with_strong"], ["Envida con mano floja (farol)", "bet_with_weak"],
+    ["Acepta envites", "acceptance_rate"], ["Acepta con mano floja", "accept_with_weak"], ["Sube / reenvida", "raise_rate"], ["Órdagos", "ordago_rate"], ["Pide mus", "mus_rate"]];
+  openModal(`<h2 id="modal-title">${esc(u.username)} · ${esc(u.model?.style || "sin datos aún")}</h2>
+    <table class="data"><tbody>${metrics.map(([t, m]) => `<tr><td class="l">${t}</td><td>${pct(rate(m))}</td></tr>`).join("")}
+      <tr><td class="l">Piedras medias con mano buena / floja</td><td>${stake("fuerte")} / ${stake("floja")}</td></tr>
+      <tr><td class="l">Partidas que conoce la IA</td><td>${u.model?.model?.games ?? 0}</td></tr></tbody></table>
+    <h3>Últimas partidas</h3><ul>${u.games.slice(-8).reverse().map((g) => `<li>${fmtDate(g.created_at)} · ${g.won ? "Victoria" : "Derrota"} ${g.score[0]}–${g.score[1]} contra ${esc(g.rivals || "?")}</li>`).join("") || "<li>Ninguna</li>"}</ul>
+    <div class="row"><button class="btn ghost" data-close>Cerrar</button></div>`);
 }
 
 // ------------------------------------------------------------------ arranque
@@ -825,6 +1218,13 @@ async function boot() {
   applySettings();
   if (LOCAL) {
     try { await startWorker(); } catch { return; }
+    try {
+      if (await cloud.initCloud()) {
+        const prof = cloud.cloudProfile();
+        if (prof) await attachCloudProfile(prof);
+        else await api("/api/auth/logout", { method: "POST" }); // sin sesión en la nube, sin perfil
+      }
+    } catch (err) { toast(`Cuentas no disponibles: ${err.message}`); }
   }
   await loadUser();
   const join = location.hash.match(/^#join\/([\w-]+)\/([\w-]+)/);

@@ -133,3 +133,11 @@ class Bot(ABC):
 
     def on_game_end(self, info: GameEndInfo) -> None:  # noqa: B027
         """Opcional: se llama al terminar. Útil para aprender."""
+
+    def signal(self, observation: Observation) -> str | None:
+        """Opcional: seña que quiere hacer ahora (una de ``observation.available_signals``).
+
+        Se le pregunta cada vez que avanza el reloj de la mesa, sea o no su turno. Solo verán
+        la seña quienes le estén mirando (``observation.gazes``). ``None`` = no hacer seña.
+        """
+        return None

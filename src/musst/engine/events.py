@@ -43,6 +43,9 @@ class EventKind(str, Enum):
     TEAM_IS_IN = "TeamIsIn"
     ROUND_FINISHED = "RoundFinished"
     GAME_FINISHED = "GameFinished"
+    GAZE_CHANGED = "GazeChanged"
+    SIGNAL_MADE = "SignalMade"
+    SIGNAL_SEEN = "SignalSeen"
 
 
 @dataclass(frozen=True)

@@ -7,6 +7,7 @@ Resultado::
     site/index.html          frontend con <meta name="musst-backend" content="pyodide">
     site/static/             CSS, JS y worker.js
     site/static/musst.zip    el paquete ``musst`` (el mismo código que el servidor)
+    site/static/cloud-config.json   solo si están SUPABASE_URL y SUPABASE_ANON_KEY (cuentas)
 
 Probar en local: ``python -m http.server -d site 8000`` y abrir http://localhost:8000.
 """
@@ -14,6 +15,8 @@ Probar en local: ``python -m http.server -d site 8000`` y abrir http://localhost
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import shutil
 import zipfile
 from pathlib import Path
@@ -48,6 +51,15 @@ def build(out: Path) -> None:
     html = html.replace("<body>\n", "<body>\n" + BOOT_SCREEN, 1)
     (out / "index.html").write_text(html, encoding="utf-8")
     (out / ".nojekyll").write_text("")
+
+    # Cuentas (Supabase): la URL y la clave "anon" son públicas por diseño; la seguridad la
+    # ponen las políticas RLS de supabase/schema.sql. Sin ellas, la web usa perfil local.
+    url, key = os.environ.get("SUPABASE_URL", ""), os.environ.get("SUPABASE_ANON_KEY", "")
+    config = out / "static" / "cloud-config.json"
+    if url and key:
+        config.write_text(json.dumps({"url": url, "anonKey": key}))
+    elif config.exists():
+        config.unlink()
 
     with zipfile.ZipFile(out / "static" / "musst.zip", "w", zipfile.ZIP_DEFLATED) as zf:
         for path in sorted(PKG.rglob("*")):

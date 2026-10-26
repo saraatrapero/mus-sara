@@ -48,6 +48,14 @@ class RulesConfig:
     """Si una negada en el acto alcanza el objetivo, el juego termina inmediatamente (P8a)."""
     team_in_threshold: int = 4
     """Faltan ≤ N tantos ⇒ "estamos dentro" (FEM VII.7)."""
+    signals_enabled: bool = False
+    """Señas oficiales (FEM VIII) con miradas. Desactivadas, el juego es idéntico."""
+    gaze_min_ticks: int = 1
+    """Duración mínima de una mirada, en pasos de tiempo (acciones o ``tick()``)."""
+    gaze_max_ticks: int = 3
+    """Duración máxima de una mirada."""
+    gaze_weights: tuple[float, float, float] = (0.4, 0.4, 0.2)
+    """Probabilidad de mirar al compañero, a uno de los rivales (repartida entre los dos) o a la mesa."""
 
     def __post_init__(self) -> None:
         if not 1 <= self.target_points <= 200:
@@ -56,6 +64,8 @@ class RulesConfig:
             raise ValueError("min_bet/max_bet inválidos")
         if not 1 <= self.min_discard <= 4:
             raise ValueError("min_discard debe estar entre 1 y 4")
+        if not 1 <= self.gaze_min_ticks <= self.gaze_max_ticks:
+            raise ValueError("gaze_min_ticks/gaze_max_ticks inválidos")
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -66,6 +76,8 @@ class RulesConfig:
         unknown = set(data) - known
         if unknown:
             raise ValueError(f"Claves de configuración desconocidas: {sorted(unknown)}")
+        if "gaze_weights" in data:
+            data = {**data, "gaze_weights": tuple(data["gaze_weights"])}
         return cls(**data)
 
     @classmethod

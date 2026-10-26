@@ -19,6 +19,11 @@ def play_until_end(client, game_id, token, obs, limit=600):
     for _ in range(limit):
         if obs["finished"]:
             return obs
+        if obs.get("awaiting_deal"):
+            r = client.post(f"/api/games/{game_id}/deal", headers=headers)
+            assert r.status_code == 200, r.text
+            obs = r.json()
+            continue
         assert obs["turn"] == obs["seat"]
         types = [a["type"] for a in obs["legal_actions"]]
         if "cut" in types:
