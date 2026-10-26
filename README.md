@@ -9,6 +9,7 @@ torneo automático de bots.
 Práctica de **Inteligencia Artificial — 3º MAT-A, CUNEF Universidad, 2026/2027**.
 
 **Jugar online:** https://saraatrapero.github.io/mus-sara/ (Python ejecutándose en tu navegador con Pyodide)
+· **Documentación:** https://saraatrapero.github.io/mus-sara/docs/
 
 [![CI](https://github.com/saraatrapero/mus-sara/actions/workflows/ci.yml/badge.svg)](https://github.com/saraatrapero/mus-sara/actions/workflows/ci.yml)
 

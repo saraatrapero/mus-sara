@@ -47,7 +47,12 @@ El mismo `Dockerfile` y `render.yaml` permiten desplegar el servidor FastAPI en 
 Face Spaces si se necesitan cuentas con contraseña, invitaciones o que las cartas de los bots no
 lleguen nunca al navegador.
 
-## Documentación (ReadTheDocs)
+## Documentación
+
+Se publica en GitHub Pages, en https://saraatrapero.github.io/mus-sara/docs/, con el mismo
+workflow que la web (`mkdocs build --site-dir site/docs`).
+
+También está preparada para ReadTheDocs:
 
 `.readthedocs.yaml` + `mkdocs.yml`. Importa el repositorio en readthedocs.org; cada push a
 `main` publica la documentación.
