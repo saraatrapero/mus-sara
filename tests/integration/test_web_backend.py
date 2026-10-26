@@ -173,6 +173,7 @@ def test_panel_de_administracion(tmp_path):
     status, overview = b.handle("GET", "/api/admin/overview", None, None)
     assert status == 200
     assert {u["username"] for u in overview["users"]} == {"sara", "anabel"}
+    assert next(u for u in overview["users"] if u["username"] == "sara")["last_seen"]
     assert len(overview["games"]) == 1 and overview["games"][0]["rivals"] == "profesional"
     assert overview["models"] and overview["models"][0]["style"]
     assert overview["memory"] and overview["memory"][0]["key"] == "self:profesional"

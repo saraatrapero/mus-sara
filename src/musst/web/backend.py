@@ -80,6 +80,7 @@ class LocalBackend:
             user = self.repo.create_user(username, password)
         if self.repo.count_admins() == 0:
             self.repo.set_role(user.id, "admin")  # la primera cuenta administra este navegador
+        self.repo.touch(user.id)
         user = self.repo.get_user(user.id) or user
         self._set_profile(user)
         return {"id": user.id, "username": user.username, "role": user.role}
