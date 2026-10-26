@@ -226,8 +226,31 @@ button.card[aria-pressed="true"] { transform: translateY(-14px); outline: 3px so
 /* Antes de repartir: resumen de la jugada */
 
 /* Señas */
-.signals { max-width: 860px; margin: 0 auto; width: 100%; display: grid; gap: 6px; }
-.signals .seen { margin: 0; }
+.signals { max-width: 980px; margin: 0 auto; width: 100%; display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.sig-col { display: grid; gap: 8px; align-content: start; }
+.sig-col p { margin: 0; }
+.seen-list { display: grid; gap: 6px; }
+.seen { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); }
+.seen.ally { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, transparent); }
+.seen.foe { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.sig-chip { display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); font-weight: 600; }
+.moment { padding: 8px 10px; border-radius: 10px; font-weight: 600; }
+.moment.good { background: color-mix(in srgb, var(--ok) 18%, transparent); }
+.moment.bad { background: color-mix(in srgb, var(--warn) 22%, transparent); }
+.moment.off { background: var(--surface-2); }
+.sig-buttons { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.sig-btn { display: grid; justify-items: center; gap: 2px; padding: 10px 8px; border-radius: 12px; border: 2px solid var(--line); background: var(--surface); cursor: pointer; }
+.sig-btn:hover, .sig-btn:focus-visible { border-color: var(--accent); }
+.sig-btn .sig-icon { font-size: 1.8rem; line-height: 1; }
+.sig-btn small { color: var(--muted); text-align: center; }
+/* Mis cartas y lo que llevo */
+.my-cards { display: flex; gap: 16px; align-items: center; justify-content: center; flex-wrap: wrap; }
+.jugadas { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+@media (max-width: 560px) { .jugadas { flex-direction: row; flex-wrap: wrap; justify-content: center; } }
+.jugada { padding: 4px 12px; border-radius: 999px; font-weight: 700; font-size: .95rem; border: 2px solid var(--line); background: var(--surface); }
+.jugada.on { border-color: var(--ok); color: var(--ok); }
+.jugada.gold { border-color: var(--gold); background: var(--gold); color: #1d2420; }
+.jugada.off { color: var(--muted); }
 .small-btn { font-size: .85rem; padding: 6px 10px; min-height: 40px; }
 
 .actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }

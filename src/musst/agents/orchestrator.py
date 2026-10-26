@@ -67,22 +67,28 @@ class LevelConfig:
     """Cuenta los tantos de la jugada de toda la pareja (pares/juego), no solo los propios."""
     discard_draws: int = 10
     """Reposiciones simuladas por cada descarte posible (0 = descarte heurístico clásico)."""
+    bluff_rate: float = 0.1
+    """Frecuencia de farol deliberado cuando la mano no da para envidar."""
+    ordago_sure: float = 0.8
+    """P(ganar si lo quieren) a partir de la cual echa órdago sin estar desesperado."""
     extra: dict[str, Any] = field(default_factory=dict)
 
 
 LEVELS: dict[str, LevelConfig] = {
     # Medio: calcula con sus cartas y lee el envite del lance actual, pero no conoce a los
-    # rivales, simula pocas manos, descarta "de manual" y comete algún error.
+    # rivales, simula pocas manos, descarta "de manual" y se equivoca a menudo en las
+    # decisiones ajustadas (no por farolear: los faroles están limitados en todos los niveles).
     "medio": LevelConfig(
         "medio",
         ("cartas", "probabilidad", "marcador"),
         samples=90,
         samples_deep=90,
         risk_aversion=0.35,
-        noise=0.12,
+        noise=0.3,
         learn=False,
         signal_policy="descuidado",
         discard_draws=0,
+        bluff_rate=0.1,
     ),
     # Profesional: todos los agentes, más simulaciones, análisis profundo en jugadas críticas,
     # modelo de cada rival, conteo, jugada de toda la pareja, descarte simulado, señas
@@ -98,6 +104,7 @@ LEVELS: dict[str, LevelConfig] = {
         self_review=True,
         team_bonus=True,
         discard_draws=30,
+        bluff_rate=0.07,
     ),
 }
 
@@ -209,6 +216,8 @@ class AgentBot(Bot):
                 "self_review": self.review_memory(),
                 "read_bets": self.level.read_bets,
                 "read_all": self.level.read_all,
+                "bluff_rate": self.level.bluff_rate,
+                "ordago_sure": self.level.ordago_sure,
                 "team_bonus": self.level.team_bonus,
             },
             self.learner,
