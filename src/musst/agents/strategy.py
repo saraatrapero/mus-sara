@@ -30,10 +30,18 @@ from musst.engine.actions import (
 from musst.engine.cards import Card
 from musst.engine.evaluation import pairs, total_points
 
-ACCEPT_FLOOR_BET = 0.2
+ACCEPT_FLOOR_BET = 0.35
 """Probabilidad mínima de que el rival acepte un envite (no conocemos su política)."""
-ACCEPT_FLOOR_ORDAGO = 0.15
+ACCEPT_FLOOR_ORDAGO = 0.3
 """Probabilidad mínima de que el rival acepte un órdago: los faroles también se pagan."""
+BLUFF_P = 0.35
+"""Por debajo de esta P(ganar el lance), envidar es un farol: solo se hace a propósito, con la
+frecuencia de farol del nivel (``LevelConfig.bluff_rate``), nunca porque las cuentas salgan."""
+ORDAGO_SURE = 0.8
+"""Un órdago se echa casi seguro de ganarlo (P(ganar si lo quieren) ≥ 0.8)…"""
+ORDAGO_DESPERATE = 0.5
+"""…o por desesperación: cuando el agente de marcador baja su umbral por debajo de este valor
+(vamos perdiendo y el rival está a punto de ganar), basta con superar ese umbral."""
 
 RAISE_ACCEPT = 0.7
 """Probabilidad supuesta de que quien envidó acepte una subida."""
@@ -84,11 +92,20 @@ class StrategyAgent:
         def add(action: Action, ev: float, risk: float, **extra: float) -> None:
             out.append(ScoredAction(action, ev * utility, risk, {**factors, **extra}))
 
+        bluff_rate = float(ctx.config.get("bluff_rate", 0.1))
+        may_bluff = p >= BLUFF_P or ctx.rng.random() < bluff_rate
+        ordago_threshold = ctx.estimate("marcador", "ordago_threshold", 0.55).value
+        ordago_ok = p_ord >= float(ctx.config.get("ordago_sure", ORDAGO_SURE)) or (
+            ordago_threshold < ORDAGO_DESPERATE and p_ord >= ordago_threshold
+        )
         if "pass" in types:  # lance abierto
             add(PassAction(), p * (bonus + paso), 0.0)
             spec = obs.spec("bet")
             assert spec is not None
-            for amount in sorted({spec.min_amount or 2, 4, 8}):
+            amounts = sorted({spec.min_amount or 2, 4, 8}) if may_bluff else []
+            if p < BLUFF_P:
+                amounts = amounts[:1]  # un farol, de 2: barato si lo cazan
+            for amount in amounts:
                 if amount > (spec.max_amount or amount):
                     continue
                 # Cuanto mayor el envite, más fuerte hace falta estar para quererlo.
@@ -96,8 +113,9 @@ class StrategyAgent:
                 pa = p_bet if amount <= 2 else p_bet * max(0.6, 1 - (amount - 2) / 20)
                 ev = (1 - a) * (1 + p * bonus) + a * ((2 * pa - 1) * amount + pa * bonus)
                 add(BetAction(amount), ev, a * amount * (pa * (1 - pa)) ** 0.5, p_win_if_accept=pa)
-            ev_ord = (1 - a_ord) * (1 + p * bonus) + a_ord * (2 * p_ord - 1) * game_value
-            add(OrdagoAction(), ev_ord, a_ord * game_value, p_win_if_accept=p_ord)
+            if ordago_ok:
+                ev_ord = (1 - a_ord) * (1 + p * bonus) + a_ord * (2 * p_ord - 1) * game_value
+                add(OrdagoAction(), ev_ord, a_ord * game_value, p_win_if_accept=p_ord)
             return out
 
         bet = obs.current_bet
@@ -129,7 +147,7 @@ class StrategyAgent:
             )
         add(RejectAction(), self._reject_ev(ctx, -bet.previous, p), 0.0)
         spec = obs.spec("raise")
-        if spec is not None:
+        if spec is not None and may_bluff:
             for extra in sorted({spec.min_amount or 2, 5}):
                 if extra > (spec.max_amount or extra):
                     continue
@@ -141,7 +159,7 @@ class StrategyAgent:
                 a = max(a_bet, self._raise_acceptance(ctx))
                 ev = (1 - a) * stake + a * (2 * p_bet - 1) * total + p * bonus
                 add(RaiseAction(extra), ev, a * total * (p_bet * (1 - p_bet)) ** 0.5)
-        if "ordago" in types:
+        if "ordago" in types and ordago_ok:
             a = max(a_ord, RESPONSE_ORDAGO_ACCEPT)
             ev = (1 - a) * stake + a * (2 * p_ord - 1) * game_value
             add(OrdagoAction(), ev, a * game_value)

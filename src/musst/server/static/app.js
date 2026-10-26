@@ -268,6 +268,10 @@ const BANTER_WIN = ["¡Esa era nuestra!", "Buena jugada, compañero", "Así se j
 const BANTER_LOSE = ["La próxima es nuestra", "Qué cartas más malas…", "Uf, no hubo suerte"];
 
 // Señas oficiales (FEM VIII.2): gesto y significado.
+const SIGNAL_ICON = {
+  dos_reyes: "😬", dos_ases: "😛", pares: "↪️", medias_reyes: "😏", medias_ases: "😜", medias: "😏",
+  duples: "🤨", juego: "😗", treinta_y_una: "😉", treinta: "🤷", veintinueve: "🤷‍♂️", ciego: "😑",
+};
 const SIGNALS = {
   dos_reyes: ["Morderse el labio inferior", "dos reyes"], dos_ases: ["Sacar la lengua de frente", "dos ases"],
   pares: ["Girar la cabeza a un lado", "pares"], medias_reyes: ["Labios cerrados hacia un lado", "medias de reyes"],
@@ -277,6 +281,21 @@ const SIGNALS = {
   veintinueve: ["Alzar un hombro", "29 de punto"], ciego: ["Cerrar los dos ojos", "ciego (nada)"],
 };
 
+// Cartas ordenadas como se cogen en la mano: de mayor (izquierda) a menor (derecha).
+const GRANDE_ORDER = (code) => { const r = parseCard(code).rank; return r === 3 ? 12 : r === 2 ? 1 : r; };
+const sortHand = (codes) => [...codes].sort((a, b) => GRANDE_ORDER(b) - GRANDE_ORDER(a) || parseCard(a).suit.localeCompare(parseCard(b).suit));
+// Qué llevas: para que se vea de un vistazo (pares, medias, duples, juego, punto).
+function jugadaChips(codes) {
+  if (!codes || codes.length !== 4) return "";
+  const { pares, total } = evalHand(codes);
+  const chips = [];
+  chips.push(pares === "sin pares" ? ["Sin pares", "off"] : [pares.charAt(0).toUpperCase() + pares.slice(1), "on"]);
+  if (total === 31) chips.push(["31 · la mejor jugada de juego", "gold"]);
+  else if (total === 32) chips.push(["Juego: 32", "on"]);
+  else if (total > 31) chips.push([`Juego: ${total}`, "on"]);
+  else chips.push([`Sin juego · punto ${total}`, "off"]);
+  return chips.map(([t, c]) => `<span class="jugada ${c}">${esc(t)}</span>`).join("");
+}
 // Jugadas de una mano (para explicar el conteo).
 function evalHand(codes) {
   const cards = codes.map(parseCard).map(({ rank, suit }) => ({ rank: rank === 3 ? 12 : rank === 2 ? 1 : rank, suit }));
@@ -479,19 +498,62 @@ function faceSVG(seat, { pos, lookPos, gesture = null, team = 0, bot = true }) {
 // Voz de los bots (síntesis de voz del navegador, en español).
 let voices = [];
 try { speechSynthesis.onvoiceschanged = () => { voices = speechSynthesis.getVoices(); }; voices = speechSynthesis.getVoices(); } catch { /* sin voz */ }
-function say(text, seat) {
-  if (!settings.voice || !settings.sound || typeof speechSynthesis === "undefined" || !text) return Promise.resolve();
+function voiceOn() { return settings.voice && settings.sound && typeof speechSynthesis !== "undefined"; }
+// Habla y bocadillo van juntos: el bocadillo aparece cuando empieza la voz y se espera a que acabe.
+function speakWithBubble(text, seat, minMs = 900) {
+  const show = () => { current.bubbles = { ...(current.bubbles || {}), [seat]: text }; renderGame(); };
+  if (!voiceOn() || !text) { show(); return sleep(minMs); }
   return new Promise((resolve) => {
+    let started = false, done = false;
+    const finish = () => { if (done) return; done = true; if (!started) show(); setTimeout(resolve, 250); };
     try {
-      const u = new SpeechSynthesisUtterance(text.replace(/[«»¡!]/g, ""));
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text.replace(/[«»¡!¿?]/g, ""));
       const es = voices.filter((v) => v.lang && v.lang.startsWith("es"));
       if (es.length) u.voice = es[seat % es.length];
-      u.lang = "es-ES"; u.pitch = [1, 0.8, 1.15, 0.9][seat % 4]; u.rate = 1.05 / Math.max(0.6, settings.speed);
-      u.onend = resolve; u.onerror = resolve;
+      u.lang = "es-ES"; u.pitch = [1, 0.8, 1.2, 0.9][seat % 4]; u.rate = Math.min(1.4, 1.05 / Math.max(0.6, settings.speed));
+      u.onstart = () => { started = true; show(); };
+      u.onend = finish; u.onerror = finish;
       speechSynthesis.speak(u);
-      setTimeout(resolve, 3500);
-    } catch { resolve(); }
+      setTimeout(() => { if (!started) { started = true; show(); } }, 700); // sin voces instaladas
+      setTimeout(finish, 6000);
+    } catch { finish(); }
   });
+}
+// Lo que digo yo al jugar (mi voz).
+function myPhrase(action) {
+  return {
+    mus: "Mus", cut: "No hay mus", pass: "Paso", accept: "Quiero", accept_no_lose: "Quiero y no pierdo",
+    reject: "No quiero", ordago: "¡Órdago!",
+  }[action.type] ?? (action.type === "bet" ? (action.amount === 2 ? "Envido" : `Envido ${action.amount}`)
+    : action.type === "raise" ? `${action.amount} más` : action.type === "discard" ? `Dame ${action.cards.length}` : "");
+}
+// Jugar hablando: reconocimiento de voz del navegador (Chrome, Edge, Safari).
+const VOICE_CMDS = [
+  [/no hay mus|corto|cortar/, { type: "cut" }], [/\bmus\b/, { type: "mus" }], [/no quiero/, { type: "reject" }],
+  [/quiero/, { type: "accept" }], [/órdago|ordago/, { type: "ordago" }], [/paso/, { type: "pass" }],
+  [/envido|envid/, { type: "bet" }], [/repart/, { type: "deal" }],
+];
+function listen() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { toast("Tu navegador no permite jugar hablando (prueba con Chrome)"); return; }
+  const rec = new SR();
+  rec.lang = "es-ES"; rec.interimResults = false; rec.maxAlternatives = 3;
+  toast("🎤 Te escucho: di «mus», «no hay mus», «paso», «envido», «quiero», «no quiero», «órdago» o «repartir»");
+  rec.onresult = (ev) => {
+    const said = [...ev.results[0]].map((r) => r.transcript.toLowerCase()).join(" | ");
+    const hit = VOICE_CMDS.find(([re]) => re.test(said));
+    if (!hit) { toast(`No he entendido: «${said.split(" | ")[0]}»`); return; }
+    const action = { ...hit[1] };
+    if (action.type === "deal") { document.getElementById("deal-btn")?.click(); return; }
+    const n = said.match(/\b(\d+)\b/);
+    const spec = current.obs.legal_actions.find((x) => x.type === action.type || (action.type === "bet" && x.type === "raise"));
+    if (!spec) { toast("Eso no se puede hacer ahora"); return; }
+    if (spec.type === "raise" || spec.type === "bet") { action.type = spec.type; action.amount = Math.min(spec.max, Math.max(spec.min, n ? Number(n[1]) : 2)); }
+    send(action);
+  };
+  rec.onerror = (e) => toast(e.error === "not-allowed" ? "Permite el micrófono para jugar hablando" : "No se ha podido escuchar");
+  rec.start();
 }
 
 // Amarracos (5 tantos) y piedras (1 tanto), como en la mesa real.
@@ -573,7 +635,7 @@ function renderGame(bubbles = current?.bubbles || {}) {
     const shown = review ? review.hands[String(s.seat)] : obs.revealed_hands && obs.revealed_hands[String(s.seat)];
     const lit = step && step.seats.includes(s.seat);
     const cards = s.seat === me && !review ? "" : shown
-      ? `<div class="hand ${lit ? "lit" : ""}">${shown.map((c) => cardHTML(c, { small: true })).join("")}</div>`
+      ? `<div class="hand ${lit ? "lit" : ""}">${sortHand(shown).map((c) => cardHTML(c, { small: true })).join("")}</div>`
       : `<div class="backs" role="img" aria-label="4 cartas ocultas">${'<span class="back"></span>'.repeat(4)}</div>`;
     const bubble = bubbles[s.seat] ? `<span class="bubble ${/ÓRDAGO/i.test(bubbles[s.seat]) ? "ordago" : ""}">${esc(bubbles[s.seat])}</span>` : "";
     const status = s.waiting ? '<span class="chip">esperando…</span>' : !s.connected ? '<span class="chip">desconectado</span>' : "";
@@ -617,12 +679,28 @@ function renderGame(bubbles = current?.bubbles || {}) {
   const watching = (obs.gazes || []).map((g, s) => (g === me && s !== me ? s : null)).filter((s) => s != null);
   const seen = Object.entries(obs.signals_seen || {}).filter(([s]) => Number(s) !== me);
   const myLook = obs.gazes && obs.gazes.length ? obs.gazes[me] : undefined;
-  const signalPanel = obs.gazes && obs.gazes.length && !finished && !handoff ? `<div class="signals panel" role="region" aria-label="Miradas y señas">
-      <p class="muted">${myLook == null ? "Miras a la mesa." : `Miras a ${esc(names[myLook])}.`} Pulsa la cara de un jugador para mirarle: solo verás sus señas si le estás mirando.</p>
-      ${seen.length ? `<p class="seen">${seen.map(([s, list]) => `<strong>${esc(names[s])}</strong> ${Number(s) === obs.partner ? "(compañero)" : "(rival)"} ha hecho seña: ${list.map((x) => esc(SIGNALS[x]?.[1] ?? x)).join(", ")}`).join("<br>")}</p>` : ""}
-      ${(obs.available_signals || []).length ? `<p class="muted">Tu seña la verán quienes te miren ahora: ${watching.length ? watching.map((s) => `${esc(names[s])}${s === obs.partner ? " ✔" : " ⚠ rival"}`).join(", ") : "nadie te mira"}</p>
-        <div class="row">${obs.available_signals.map((x) => `<button class="btn small-btn" data-signal="${x}" title="${esc(SIGNALS[x]?.[0] ?? "")}">${esc(SIGNALS[x]?.[0] ?? x)} · <em>${esc(SIGNALS[x]?.[1] ?? "")}</em></button>`).join("")}</div>` : ""}
-    </div>` : "";
+  const partnerWatching = watching.includes(obs.partner);
+  const rivalWatching = watching.some((x) => x % 2 !== myTeam);
+  const moment = partnerWatching && !rivalWatching ? ["good", "✅ Buen momento: te mira tu compañero y ningún rival."]
+    : rivalWatching ? ["bad", `⚠️ Cuidado: te mira ${watching.filter((x) => x % 2 !== myTeam).map((x) => esc(names[x])).join(" y ")} (rival). Si haces la seña, la verá.`]
+      : ["off", "😶 Nadie te mira: si haces la seña ahora, no la verá nadie."];
+  const signalPanel = obs.gazes && obs.gazes.length && !finished && !handoff ? `<section class="signals panel" aria-label="Señas">
+      <div class="sig-col">
+        <h2 class="card-title">👀 Ver señas</h2>
+        <p>${myLook == null ? "Ahora miras a la mesa." : `Ahora miras a <strong>${esc(names[myLook])}</strong>${myLook === obs.partner ? " (tu compañero)" : " (rival)"}.`}</p>
+        <p class="muted">Pulsa la cara de un jugador para mirarle. Solo verás sus señas mientras le mires: lo normal es mirar a tu compañero.</p>
+        ${myLook !== obs.partner ? `<button class="btn small-btn" data-look="${obs.partner}">Mirar a mi compañero</button>` : ""}
+        ${seen.length ? `<div class="seen-list">${seen.map(([x, list]) => `<div class="seen ${Number(x) === obs.partner ? "ally" : "foe"}"><strong>${esc(names[x])}</strong> ${Number(x) === obs.partner ? "(compañero)" : "(rival)"}:
+          ${list.map((g) => `<span class="sig-chip">${SIGNAL_ICON[g] ?? "✋"} ${esc(SIGNALS[g]?.[1] ?? g)}</span>`).join(" ")}</div>`).join("")}</div>` : '<p class="muted">Aún no has visto ninguna seña en esta jugada.</p>'}
+      </div>
+      <div class="sig-col">
+        <h2 class="card-title">✋ Hacer una seña</h2>
+        ${(obs.available_signals || []).length ? `<p class="moment ${moment[0]}">${moment[1]}</p>
+          <div class="sig-buttons">${obs.available_signals.map((x) => `<button class="sig-btn" data-signal="${x}"><span class="sig-icon" aria-hidden="true">${SIGNAL_ICON[x] ?? "✋"}</span><strong>${esc(SIGNALS[x]?.[1] ?? x)}</strong><small>${esc(SIGNALS[x]?.[0] ?? "")}</small></button>`).join("")}</div>
+          <p class="muted">Solo puedes hacer señas verdaderas, después de cortar el mus.</p>`
+        : `<p class="muted">${obs.phase === "mus" || obs.phase === "discard" ? "Las señas se hacen después de cortar el mus." : "Ya has hecho tus señas en esta jugada."}</p>`}
+      </div>
+    </section>` : "";
   const curtain = handoff != null ? `<div class="curtain panel stack" role="dialog" aria-label="Cambio de jugador">
       <h2 class="card-title">Turno de ${esc(names[handoff])}</h2><p>Pasa el dispositivo a ${esc(names[handoff])}. Las cartas están tapadas.</p>
       <button class="btn primary" id="handoff-btn">Soy ${esc(names[handoff])}: ver mis cartas</button></div>` : "";
@@ -643,7 +721,8 @@ function renderGame(bubbles = current?.bubbles || {}) {
       ${finished ? "" : deck}
     </div>
     ${curtain}
-    ${handoff != null || review ? "" : `<div class="hand" id="my-hand" aria-label="Tus cartas">${obs.hand.map((c) => cardHTML(c, { button: obs.phase === "discard" && myTurn, pressed: current.discard.has(c) })).join("")}</div>`}
+    ${handoff != null || review ? "" : `<div class="my-cards"><div class="hand" id="my-hand" aria-label="Tus cartas, de mayor a menor">${sortHand(obs.hand).map((c) => cardHTML(c, { button: obs.phase === "discard" && myTurn, pressed: current.discard.has(c) })).join("")}</div>
+      <div class="jugadas" aria-label="Lo que llevas">${jugadaChips(obs.hand)}</div></div>`}
     <div class="status-line" id="status"></div>
     <div class="actions" id="actions" role="group" aria-label="Acciones disponibles"></div>
     ${signalPanel}
@@ -651,9 +730,11 @@ function renderGame(bubbles = current?.bubbles || {}) {
       <button class="btn ghost" id="help-btn" aria-expanded="${current.help}">? ¿Qué puedo hacer?</button>
       ${finished ? '<button class="btn primary" id="summary-btn">Ver resumen</button>' : ""}
       <button class="btn ghost" id="log-btn">Historial de la jugada</button>
+      ${finished ? "" : '<button class="btn ghost" id="mic-btn" title="Di tu jugada en voz alta">🎤 Jugar hablando</button>'}
     </div>
     <div id="help" class="help-panel" ${current.help ? "" : "hidden"}></div>
   </div>`));
+  document.getElementById("mic-btn")?.addEventListener("click", listen);
   renderActions();
   document.getElementById("deal-btn")?.addEventListener("click", () => { if (current.review) current.review.done = true; dealCards(); });
   document.getElementById("rev-next")?.addEventListener("click", () => { current.review.step += 1; renderGame(); });
@@ -737,6 +818,8 @@ async function send(action) {
   if (current.busy) return;
   current.busy = true;
   try {
+    const mine = myPhrase(action);
+    if (mine) await speakWithBubble(mine, current.obs.seat, 500);
     const obs = await api(`/api/games/${current.id}/action`, { method: "POST", body: { action }, token: current.token });
     await animateTo(obs);
   } catch (err) {
@@ -763,12 +846,9 @@ async function animateTo(obs) {
       const human = obs.seats[e.actor]?.kind === "human";
       if (bubble && e.round === prevRound && e.actor !== obs.seat) {
         // Lo que dice cada jugador se queda en su bocadillo hasta el siguiente lance.
-        const phrase = human ? BUBBLE[e.kind] : talk(e);
-        current.bubbles = { ...current.bubbles, [e.actor]: phrase };
+        const phrase = human ? myPhrase({ type: { BetPlaced: "bet", BetRaised: "raise", OrdagoDeclared: "ordago", BetAccepted: "accept", OrdagoAccepted: "accept", BetRejected: "reject", Passed: "pass", MusRequested: "mus", MusCut: "cut" }[e.kind] ?? "", amount: e.payload.amount }) || BUBBLE[e.kind] : talk(e);
         setStatus(text);
-        renderGame();
-        const pause = e.kind === "PairsDeclared" || e.kind === "GameDeclared" ? 650 : 1200;
-        await Promise.all([human ? null : say(phrase, e.actor), sleep(pause)]);
+        await speakWithBubble(phrase, e.actor, e.kind === "PairsDeclared" || e.kind === "GameDeclared" ? 650 : 1100);
       } else if (e.kind === "HandsRevealed" && e.round === prevRound) {
         setStatus("Se enseñan las cartas");
         current.obs = { ...current.obs, revealed_hands: e.payload.hands };
@@ -793,9 +873,8 @@ async function animateTo(obs) {
         if (bot) {
           const pool = (bot.team === obs.team ? mine >= theirs : theirs > mine) ? BANTER_WIN : BANTER_LOSE;
           const phrase = pool[e.seq % pool.length];
-          current.bubbles = { [bot.seat]: phrase };
-          renderGame();
-          await Promise.all([say(phrase, bot.seat), sleep(1200)]);
+          current.bubbles = {};
+          await speakWithBubble(phrase, bot.seat, 1100);
         }
         current.bubbles = {};
       }
@@ -845,6 +924,9 @@ async function dealCards() {
     const obs = await api(`/api/games/${current.id}/deal`, { method: "POST", token: current.token });
     play("deal");
     await animateDeal(obs);
+    // Mis cartas se ven nada más repartir; después hablan los que van antes que yo.
+    current.obs = { ...current.obs, hand: obs.hand, awaiting_deal: false, legal_actions: [], dealer: obs.dealer, mano: obs.mano };
+    renderGame();
     current.busy = false;
     await animateTo(obs);
   } catch (err) { toast(err.message); } finally { current.busy = false; }
@@ -976,7 +1058,10 @@ function replayFromHistory(history, seats) {
   let i = 0; let timer = null;
   $main.innerHTML = "";
   $main.append(h(`<div class="page stack">
-    <h1 class="page-title">Replay</h1>
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <h1 class="page-title">Replay</h1>
+      <div class="row"><button class="btn" id="r-exit">← Salir del replay</button><button class="btn primary" id="r-new">Jugar otra partida</button></div>
+    </div>
     <div class="table" style="min-height:260px" id="replay-table"></div>
     <div class="replay-controls" role="group" aria-label="Controles de reproducción">
       <button class="btn" id="r-first" aria-label="Principio">⏮</button><button class="btn" id="r-prev" aria-label="Anterior">◀</button>
@@ -996,7 +1081,7 @@ function replayFromHistory(history, seats) {
     }
     const seatsHTML = seats.map((s) => `<div class="seat ${seatPosition(s.seat, 0)}">
       ${cur && cur.actor === s.seat && BUBBLE[cur.kind] ? `<span class="bubble">${BUBBLE[cur.kind]}</span>` : ""}
-      <div class="avatar">${s.kind === "bot" ? "🤖" : "🧑"}</div><div class="seat-name">${esc(s.name)}</div>
+      <div class="avatar">${faceSVG(s.seat, { pos: seatPosition(s.seat, 0), lookPos: "mesa", team: s.seat % 2 })}</div><div class="seat-name">${esc(s.name)}</div>
       ${hands ? `<div class="hand">${hands[String(s.seat)].map((c) => cardHTML(c, { small: true })).join("")}</div>` : '<div class="backs" role="img" aria-label="Mano no revelada">' + '<span class="back"></span>'.repeat(4) + "</div>"}</div>`).join("");
     document.getElementById("replay-table").innerHTML = seatsHTML +
       `<div class="center"><div><div class="lance-title">${esc(lance)}</div><div class="bet-info">A ${score[0]} – B ${score[1]}</div><div class="bet-info">${esc(cur ? eventText(cur, names) : "")}</div></div></div>`;
@@ -1004,7 +1089,9 @@ function replayFromHistory(history, seats) {
     log.innerHTML = upto.slice(-40).map((e, k, arr) => `<li class="${k === arr.length - 1 ? "now" : ""}">${esc(eventText(e, names))}</li>`).join("");
     log.lastElementChild?.scrollIntoView({ block: "nearest" });
   };
-  const stop = () => { clearInterval(timer); timer = null; document.getElementById("r-play").textContent = "▶ REPRODUCIR"; };
+  const stop = () => { clearInterval(timer); timer = null; const b = document.getElementById("r-play"); if (b) b.textContent = "▶ REPRODUCIR"; };
+  document.getElementById("r-exit").onclick = () => { stop(); go(user ? "stats" : "home"); };
+  document.getElementById("r-new").onclick = () => { stop(); current = null; go("home"); };
   document.getElementById("r-first").onclick = () => { stop(); i = 0; draw(); };
   document.getElementById("r-last").onclick = () => { stop(); i = steps.length - 1; draw(); };
   document.getElementById("r-prev").onclick = () => { stop(); i = Math.max(0, i - 1); draw(); };
@@ -1012,7 +1099,7 @@ function replayFromHistory(history, seats) {
   document.getElementById("r-play").onclick = (e) => {
     if (timer) { stop(); return; }
     e.target.textContent = "⏸ PAUSA";
-    timer = setInterval(() => { if (i >= steps.length - 1) { stop(); return; } i += 1; draw(); }, 700 * settings.speed);
+    timer = setInterval(() => { if (i >= steps.length - 1 || !document.getElementById("r-log")) { stop(); return; } i += 1; draw(); }, 700 * settings.speed);
   };
   draw();
 }

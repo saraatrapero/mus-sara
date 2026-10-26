@@ -20,7 +20,9 @@ Diseño completo: [design/06-agentes.md](design/06-agentes.md). Código: `src/mu
 | Conteo (cartas pedidas, descartes) | No | No | Sí |
 | Tantos de jugada de la pareja (pares/juego) | No | Solo los suyos | Los de toda la pareja |
 | Descarte | Heurístico | Heurístico | Simulado (30 reposiciones por opción) |
-| Errores deliberados | 15 % | 12 % en decisiones ajustadas | Ninguno |
+| Errores deliberados | 15 % | 30 % en decisiones ajustadas | Ninguno |
+| Faroles | 5 % | Deliberados, 10 % de las manos flojas | Deliberados, 7 % |
+| Órdago | Con mano muy fuerte | P(ganar) ≥ 0.8 o desesperación | P(ganar) ≥ 0.8 o desesperación |
 | Señas | Si le mira cualquiera | Si le mira su compañero | Solo si le mira su compañero y ningún rival |
 | Aprende entre partidas | No | No | Sí: perfiles y autocrítica |
 
