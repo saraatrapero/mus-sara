@@ -140,8 +140,11 @@ class AgentBot(Bot):
         level: str = "profesional",
         seed: int | None = None,
         learner: Learner | None = None,
+        learn_opponents: bool = True,
     ) -> None:
         self.level = LEVELS[level]
+        self.learn_opponents = learn_opponents
+        """``False`` cuando otro (el servidor) ya aprende de los jugadores con la misma memoria."""
         self.name = level
         self.rng = random.Random(seed)
         self.orchestrator = Orchestrator(self.level)
@@ -225,9 +228,11 @@ class AgentBot(Bot):
     def on_game_end(self, info: GameEndInfo) -> None:
         if self.learner is None or not self.level.learn:
             return
-        self.last_learning = self.learner.learn_game(
-            list(info.history), self.player_ids, self.target
-        )
+        if self.learn_opponents:
+            self.last_learning = self.learner.learn_game(
+                list(info.history), self.player_ids, self.target
+            )
+        self._review = None  # recarga: otro bot del mismo nivel puede haber guardado ya
         review = self.review_memory()
         if review is not None:
             lost = info.winner != self.seat % 2
@@ -247,5 +252,7 @@ class MediumBot(AgentBot):
 class ProBot(AgentBot):
     """Nivel PROFESIONAL: todos los agentes + PlayerModel con aprendizaje."""
 
-    def __init__(self, seed: int | None = None, learner: Learner | None = None) -> None:
-        super().__init__("profesional", seed, learner)
+    def __init__(
+        self, seed: int | None = None, learner: Learner | None = None, learn_opponents: bool = True
+    ) -> None:
+        super().__init__("profesional", seed, learner, learn_opponents)

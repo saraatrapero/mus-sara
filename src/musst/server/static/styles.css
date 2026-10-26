@@ -282,3 +282,12 @@ dialog::backdrop { background: rgb(10 14 12 / .55); }
 .booting small { color: var(--muted); max-width: 32ch; }
 .shown-hands { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
 .shown-hands .hand { justify-content: flex-start; gap: 4px; }
+
+/* Panel de administración */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; display: grid; gap: 2px; }
+.tile span { color: var(--muted); font-size: .85rem; }
+.tile strong { font-size: 2rem; font-family: var(--font-serif); line-height: 1.1; }
+.tile small { color: var(--muted); }
+.chart { margin: 8px 0 0; } .chart rect.hit:hover + rect { opacity: .75; }
+button.link { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; }

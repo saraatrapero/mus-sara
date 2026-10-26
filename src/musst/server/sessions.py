@@ -171,7 +171,8 @@ class SessionManager:
         if level == "profesional":
             from musst.agents.orchestrator import ProBot
 
-            return ProBot(seed=seed, learner=self.learner)
+            # La sesión ya aprende de los humanos al terminar (una sola vez por partida).
+            return ProBot(seed=seed, learner=self.learner, learn_opponents=False)
         entry = get_entry(level)
         bot = entry.factory()
         if hasattr(bot, "rng"):

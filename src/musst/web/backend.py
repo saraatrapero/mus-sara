@@ -78,6 +78,67 @@ class LocalBackend:
         if seat.kind == "human" and seat.token is None:
             seat.token = token
 
+    # ------------------------------------------------------------------ nube (Supabase)
+    def _cloud_import(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Al iniciar sesión: lo que la IA sabía del jugador y la autocrítica de los bots.
+
+        Se queda con la versión que tenga más partidas (la nube o este navegador)."""
+        user = self._require_user()
+        imported = []
+        cloud_model = body.get("model")
+        if isinstance(cloud_model, dict):
+            pid = f"user:{user.id}"
+            local = self.repo.load_model(pid)
+            if local is None or cloud_model.get("games", 0) >= local.get("games", 0):
+                self.repo.save_model(pid, {**cloud_model, "player_id": pid})
+                imported.append("modelo del jugador")
+        for key, data in (body.get("bot_memory") or {}).items():
+            if not (isinstance(data, dict) and re.fullmatch(r"self:[a-z]+", key)):
+                continue
+            local = self.repo.load_model(key) or {"player_id": key, "games": 0, "rates": {}}
+            mine = (local.get("extra") or {}).get("self_review") or {}
+            if data.get("games", 0) >= mine.get("games", 0):
+                local.setdefault("extra", {})["self_review"] = data
+                self.repo.save_model(key, local)
+                imported.append(f"autocrítica {key}")
+        return {"imported": imported}
+
+    def _cloud_export(self, game_id: str) -> dict[str, Any]:
+        """Al terminar una partida: resumen, modelo del jugador y autocrítica para la nube."""
+        from musst.analytics.analysis import seat_statistics
+
+        user = self._require_user()
+        data = self.repo.load_game(game_id)
+        if data is None or data["status"] != "FINISHED":
+            raise ApiError(404, "Partida no terminada")
+        seat = next((s for s in data["seats"] if s.get("user_id") == user.id), None)
+        if seat is None:
+            raise ApiError(403, "No jugabas en esta partida")
+        team = seat["seat"] % 2
+        levels = {s["seat"]: s.get("level") for s in data["seats"]}
+        model = self.service.manager.learner.long_model(f"user:{user.id}")
+        memory = {}
+        for level in ("profesional",):
+            raw = self.repo.load_model(f"self:{level}")
+            if raw and (raw.get("extra") or {}).get("self_review"):
+                memory[f"self:{level}"] = raw["extra"]["self_review"]
+        return {
+            "game": {
+                "id": game_id,
+                "mode": data["mode"],
+                "rivals": levels.get((seat["seat"] + 1) % 4),
+                "partner": levels.get((seat["seat"] + 2) % 4) or "humano",
+                "won": data["winner"] == team,
+                "score": [data["score"][team], data["score"][1 - team]],
+                "reason": (data["history"] or [{}])[-1].get("payload", {}).get("reason"),
+                "stats": seat_statistics(data["history"] or [], seat["seat"]),
+                "history": data["history"],
+            },
+            "model": model.to_dict(),
+            "style": model.style()["label"],
+            "bot_memory": memory,
+        }
+
     # ------------------------------------------------------------------ enrutado
     def handle(
         self, method: str, path: str, body: dict[str, Any] | None, token: str | None
@@ -123,6 +184,11 @@ class LocalBackend:
                     return 200, svc.help(game_id, token)
                 if sub == "analysis":
                     return 200, svc.analysis(game_id, token)
+            if path == "/api/cloud/import" and method == "POST":
+                return 200, self._cloud_import(body)
+            m = re.fullmatch(r"/api/cloud/export/([\w-]+)", path)
+            if m:
+                return 200, self._cloud_export(m.group(1))
             if path == "/api/history":
                 return 200, svc.history(self._require_user())
             if path == "/api/players/me/statistics":

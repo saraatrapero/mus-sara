@@ -114,3 +114,32 @@ def test_handle_json_y_errores():
         )
     )
     assert out["status"] == 200 and out["data"]["winner"] in (0, 1)
+
+
+def test_sincronizacion_con_la_nube(tmp_path):
+    b = LocalBackend(tmp_path)
+    b.handle("POST", "/api/auth/login", {"username": "sara"}, None)
+    _, data = b.handle(
+        "POST", "/api/games", {"seed": 4, "target": 10, "rivals": "profesional"}, None
+    )
+    play_until_end(b, data["game_id"], data["seat_token"], data["observation"])
+    status, out = b.handle("GET", f"/api/cloud/export/{data['game_id']}", None, None)
+    assert status == 200, out
+    assert out["game"]["id"] == data["game_id"] and isinstance(out["game"]["won"], bool)
+    assert out["model"]["games"] == 1 and out["style"]
+    assert "self:profesional" in out["bot_memory"]
+    json.dumps(out)  # se puede enviar tal cual a Supabase
+
+    # Otro navegador: al iniciar sesión recibe lo aprendido
+    other = LocalBackend(tmp_path / "otro" if (tmp_path / "otro").mkdir() is None else None)
+    other.handle("POST", "/api/auth/login", {"username": "sara"}, None)
+    status, res = other.handle(
+        "POST", "/api/cloud/import", {"model": out["model"], "bot_memory": out["bot_memory"]}, None
+    )
+    assert status == 200 and len(res["imported"]) == 2
+    uid = other.user.id
+    assert other.service.manager.learner.long_model(f"user:{uid}").games == 1
+    assert other.repo.load_model("self:profesional")["extra"]["self_review"]["games"] >= 1
+    assert other.handle("POST", "/api/cloud/import", {"bot_memory": {"hack": {}}}, None)[1] == {
+        "imported": []
+    }

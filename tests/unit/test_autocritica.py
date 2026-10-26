@@ -55,3 +55,11 @@ def test_el_profesional_aprende_y_conserva_la_autocritica():
         assert pro.self_review_summary and pro.self_review_summary[0].startswith("Autocrítica")
     memory = SelfReview.from_dict(learner.long_model("self:profesional").extra["self_review"])
     assert memory.games >= 3 and memory.calibration
+
+
+def test_dos_profesionales_en_la_mesa_no_se_pisan_la_memoria():
+    learner = Learner()
+    a, b = ProBot(1, learner=learner), ProBot(2, learner=learner)
+    play_game([a, SimpleBot(1), b, SimpleBot(2)], seed=3)
+    memory = SelfReview.from_dict(learner.long_model("self:profesional").extra["self_review"])
+    assert memory.games == 2

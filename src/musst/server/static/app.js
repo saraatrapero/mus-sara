@@ -3,6 +3,8 @@
 // Dos backends con la misma API: el servidor FastAPI o, en GitHub Pages, el mismo Python
 // ejecutándose en este navegador con Pyodide (worker.js). Lo decide <meta name="musst-backend">.
 
+import * as cloud from "./cloud.js";
+
 const $main = document.getElementById("main");
 const $live = document.getElementById("live");
 const $modal = document.getElementById("modal");
@@ -306,7 +308,7 @@ const SOUND_OF = {
 };
 
 // ------------------------------------------------------------------ navegación
-const views = { home, learn, arena, stats, settings: settingsView, game: () => renderGame(), tutorial, training };
+const views = { home, learn, arena, stats, settings: settingsView, game: () => renderGame(), tutorial, training, admin: adminView };
 function go(name, ...args) {
   document.querySelectorAll(".topnav button").forEach((b) => b.setAttribute("aria-current", b.dataset.nav === name ? "page" : "false"));
   $main.innerHTML = "";
@@ -653,7 +655,7 @@ async function animateTo(obs) {
   renderGame();
   const last = fresh.filter((e) => e.kind === "RoundFinished").pop();
   if (last) setStatus(`Fin de la jugada: ${last.payload.score[0]} – ${last.payload.score[1]}`);
-  if (obs.finished) { store.set("musst.current", null); setTimeout(showSummary, 600); }
+  if (obs.finished) { store.set("musst.current", null); setTimeout(showSummary, 600); syncFinishedGame(obs.game_id); }
 }
 // Reparto: se pregunta antes y se ve cómo van saliendo las cartas de la baraja, de una en
 // una y en sentido antihorario empezando por el mano (FEM III.2).
@@ -952,6 +954,7 @@ async function arena() {
 
 // ------------------------------------------------------------------ ANALIZAR
 const STYLE_LABEL = {
+  bet_with_strong: "Envida con mano buena", bet_with_weak: "Envida con mano floja", accept_with_weak: "Acepta con mano floja",
   aggression: "Agresividad", risk_tolerance: "Riesgo", bluff_frequency: "Farol", acceptance_rate: "Aceptación",
   rejection_rate: "Rechazo", raise_rate: "Reenvites", ordago_rate: "Órdagos", mus_rate: "Mus",
 };
@@ -979,6 +982,7 @@ async function stats() {
           <tr><td>Aceptaciones / rechazos</td><td>${s.totales.aceptaciones ?? 0} / ${s.totales.rechazos ?? 0}</td></tr>
           <tr><td>Mus</td><td>${s.totales.mus ?? 0}</td></tr></tbody></table></div>
         <div class="panel stack"><h2 class="card-title">Estilo (estimaciones)</h2>
+          ${s.perfil ? `<p>La IA te ve como <strong>${esc(s.perfil.label)}</strong> (confianza ${esc(String(s.perfil.confidence).toLowerCase())}).</p>` : ""}
           ${Object.entries(s.estilo).map(([k, v]) => `<div><div class="row" style="justify-content:space-between"><span>${STYLE_LABEL[k] ?? k}</span><span class="muted">${Math.round(v.value * 100)} % · confianza ${v.confidence.toLowerCase()}</span></div><div class="bar"><span style="width:${Math.round(v.value * 100)}%"></span></div></div>`).join("")}
           <p class="muted">Son estadísticas descriptivas con su incertidumbre, no una nota sobre lo bueno que eres.</p></div>
       </div>
@@ -1023,7 +1027,10 @@ function loginDialog() {
   openModal(`<h2 id="modal-title">Entrar</h2>
     <form id="lf" class="stack">
       <label class="field">Usuario<input name="username" autocomplete="username" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_.\\-]+"></label>
-      ${LOCAL ? `<p class="muted">Perfil local: tus partidas, estadísticas y lo que el bot aprende de ti se guardan solo en este navegador. No hace falta contraseña.</p>
+      ${LOCAL && cloud.cloudEnabled() ? `<label class="field">Contraseña<input name="password" type="password" autocomplete="current-password" required minlength="8"></label>
+      <p class="muted">Tu cuenta guarda tus partidas y lo que la IA aprende de tu forma de jugar, en cualquier dispositivo.</p>
+      <div class="row"><button class="btn primary" value="login">Entrar</button><button class="btn" value="register">Crear cuenta</button><button class="btn ghost" type="button" data-close>Cancelar</button></div>`
+      : LOCAL ? `<p class="muted">Perfil local: tus partidas, estadísticas y lo que el bot aprende de ti se guardan solo en este navegador. No hace falta contraseña.</p>
       <div class="row"><button class="btn primary" value="login">Usar este perfil</button><button class="btn ghost" type="button" data-close>Cancelar</button></div>`
       : `<label class="field">Contraseña<input name="password" type="password" autocomplete="current-password" required minlength="8"></label>
       <p class="muted">Solo guardamos tu usuario y un hash de la contraseña. Nada más.</p>
@@ -1034,7 +1041,14 @@ function loginDialog() {
     const f = new FormData(e.target);
     const kind = e.submitter?.value === "register" ? "register" : "login";
     try {
-      await api(`/api/auth/${kind}`, { method: "POST", body: { username: f.get("username"), password: f.get("password") } });
+      if (LOCAL && cloud.cloudEnabled()) {
+        const prof = kind === "register"
+          ? await cloud.signUp(f.get("username"), f.get("password"))
+          : await cloud.signIn(f.get("username"), f.get("password"));
+        await attachCloudProfile(prof);
+      } else {
+        await api(`/api/auth/${kind}`, { method: "POST", body: { username: f.get("username"), password: f.get("password") } });
+      }
       $modal.close();
       await loadUser();
       toast(kind === "register" ? "Cuenta creada" : `Hola, ${user ? user.username : ""}`);
@@ -1046,13 +1060,157 @@ function accountMenu() {
   openModal(`<h2 id="modal-title">${esc(user.username)}</h2><div class="row">
     <button class="btn" id="to-stats">Mis estadísticas</button><button class="btn" id="logout">Salir</button><button class="btn ghost" data-close>Cerrar</button></div>`);
   document.getElementById("to-stats").onclick = () => { $modal.close(); go("stats"); };
-  document.getElementById("logout").onclick = async () => { await api("/api/auth/logout", { method: "POST" }); user = null; $modal.close(); updateAccount(); go("home"); };
+  document.getElementById("logout").onclick = async () => {
+    if (cloud.cloudEnabled()) await cloud.signOut();
+    await api("/api/auth/logout", { method: "POST" }); user = null; $modal.close(); updateAccount(); go("home");
+  };
 }
-function updateAccount() { document.getElementById("account").textContent = user ? user.username : "Entrar"; }
+function updateAccount() {
+  document.getElementById("account").textContent = user ? user.username : "Entrar";
+  const nav = document.querySelector(".topnav");
+  let admin = nav.querySelector('[data-nav="admin"]');
+  if (cloud.isAdmin() && !admin) {
+    admin = document.createElement("button"); admin.dataset.nav = "admin"; admin.textContent = "Admin"; nav.append(admin);
+  } else if (!cloud.isAdmin() && admin) admin.remove();
+}
+// Cuenta en Supabase → perfil local del motor (mismo nombre) + lo que la IA ya sabía.
+async function attachCloudProfile(prof) {
+  if (!prof) return;
+  await api("/api/auth/login", { method: "POST", body: { username: prof.username } });
+  try {
+    const memory = await cloud.pullMemory();
+    await api("/api/cloud/import", { method: "POST", body: memory });
+  } catch (err) { toast(`No se pudo traer tu historial: ${err.message}`); }
+}
+const synced = new Set();
+async function syncFinishedGame(gameId) {
+  if (synced.has(gameId)) return;
+  synced.add(gameId);
+  if (!LOCAL || !cloud.cloudEnabled() || !cloud.cloudProfile() || !user) return;
+  try {
+    const exported = await api(`/api/cloud/export/${gameId}`);
+    await cloud.pushGame(exported);
+    toast("Partida guardada en tu cuenta");
+  } catch (err) { toast(`No se pudo guardar en la nube: ${err.message}`); }
+}
 async function loadUser() {
   try { user = await api("/api/me"); } catch { user = null; }
   if (user && user.settings && Object.keys(user.settings).length) { settings = { ...settings, ...user.settings }; applySettings(); }
   updateAccount();
+}
+
+// ------------------------------------------------------------------ administración
+// Panel del administrador: usuarios (crear, editar, borrar), actividad, resultados contra cada
+// nivel de bot, estilos de juego que la IA ha detectado y autocrítica de los bots.
+const pct = (v) => (v == null || Number.isNaN(v) ? "—" : `${Math.round(v * 100)} %`);
+const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" }) : "—");
+function barChart(rows, { label, unit = "", max } = {}) {
+  // Una sola serie: barras con extremo redondeado, valor al pasar el ratón (title) y tabla equivalente.
+  const top = max ?? Math.max(1, ...rows.map((r) => r.value));
+  const w = 640, hgt = 160, gap = 2, bw = Math.max(4, (w - gap * rows.length) / Math.max(1, rows.length));
+  const bars = rows.map((r, i) => {
+    const bh = Math.round((r.value / top) * (hgt - 20));
+    return `<g><title>${esc(r.label)}: ${r.value}${unit}</title><rect class="hit" x="${i * (bw + gap)}" y="0" width="${bw}" height="${hgt}" fill="transparent"/>
+      <rect x="${i * (bw + gap)}" y="${hgt - bh}" width="${bw}" height="${bh}" rx="${Math.min(4, bw / 2)}" fill="var(--accent)"/></g>`;
+  }).join("");
+  return `<figure class="chart"><svg viewBox="0 0 ${w} ${hgt}" width="100%" role="img" aria-label="${esc(label)}">
+    <line x1="0" x2="${w}" y1="${hgt - 0.5}" y2="${hgt - 0.5}" stroke="var(--line)"/>${bars}</svg>
+    <figcaption class="muted">${esc(label)} · máximo ${top}${unit}</figcaption></figure>`;
+}
+async function adminView() {
+  if (!cloud.isAdmin()) { go("home"); return; }
+  $main.append(h('<div class="page stack"><h1 class="page-title">Administración</h1><div id="adm">Cargando…</div></div>'));
+  let d;
+  try { d = await cloud.adminData(); } catch (err) { document.getElementById("adm").textContent = err.message; return; }
+  const byUser = Object.fromEntries(d.users.map((u) => [u.id, { ...u, games: [], model: null }]));
+  d.games.forEach((g) => byUser[g.user_id]?.games.push(g));
+  d.models.forEach((m) => { if (byUser[m.user_id]) byUser[m.user_id].model = m; });
+  const users = Object.values(byUser);
+  const wins = d.games.filter((g) => g.won).length;
+  const week = Date.now() - 7 * 864e5;
+  const active = users.filter((u) => u.games.some((g) => new Date(g.created_at) > week)).length;
+  // actividad: partidas por día, últimos 30 días
+  const days = [...Array(30)].map((_, i) => { const t = new Date(Date.now() - (29 - i) * 864e5); return t.toISOString().slice(0, 10); });
+  const perDay = days.map((day) => ({ label: day, value: d.games.filter((g) => g.created_at.slice(0, 10) === day).length }));
+  const levels = ["sencillo", "medio", "profesional"].map((lv) => {
+    const gs = d.games.filter((g) => g.rivals === lv);
+    return { lv, n: gs.length, rate: gs.length ? gs.filter((g) => g.won).length / gs.length : null };
+  });
+  const styles = {};
+  users.forEach((u) => { const s = u.model?.style || "sin datos aún"; styles[s] = (styles[s] || 0) + 1; });
+  const review = d.memory.find((m) => m.key === "self:profesional")?.data;
+  const mistakeRows = review ? Object.entries(review.mistakes).map(([k, [e, n]]) => { const [lance, kind] = k.split("|"); return { lance, kind, e, n }; }).filter((r) => r.kind !== "pass").sort((a, b) => b.n - a.n) : [];
+  const calib = review ? Object.entries(review.calibration).reduce((acc, [k, [w, n]]) => { const b = Number(k.split("|")[1]); acc[b] = acc[b] || [0, 0]; acc[b][0] += w; acc[b][1] += n; return acc; }, {}) : {};
+  const el = document.getElementById("adm");
+  el.innerHTML = `
+    <div class="tiles">
+      <div class="tile"><span>Usuarios</span><strong>${users.length}</strong><small>${users.filter((u) => u.role === "admin").length} admin</small></div>
+      <div class="tile"><span>Activos 7 días</span><strong>${active}</strong></div>
+      <div class="tile"><span>Partidas</span><strong>${d.games.length}</strong></div>
+      <div class="tile"><span>Victorias de humanos</span><strong>${pct(d.games.length ? wins / d.games.length : null)}</strong></div>
+      <div class="tile"><span>Decisiones revisadas por el bot</span><strong>${review ? Object.values(review.calibration).reduce((t, [, n]) => t + n, 0) : 0}</strong><small>${review ? review.games : 0} revisiones</small></div>
+    </div>
+    <div class="panel"><h2 class="card-title">Partidas por día (30 días)</h2>${barChart(perDay, { label: "Partidas por día" })}</div>
+    <div class="grid-2">
+      <div class="panel"><h2 class="card-title">Humanos contra cada nivel</h2><table class="data"><thead><tr><th class="l">Rivales</th><th>Partidas</th><th>% victorias humanas</th></tr></thead>
+        <tbody>${levels.map((l) => `<tr><td class="l">${l.lv}</td><td>${l.n}</td><td>${pct(l.rate)}</td></tr>`).join("")}</tbody></table></div>
+      <div class="panel"><h2 class="card-title">Estilos detectados por la IA</h2><table class="data"><tbody>${Object.entries(styles).map(([s, n]) => `<tr><td class="l">${esc(s)}</td><td>${n}</td></tr>`).join("")}</tbody></table></div>
+    </div>
+    <div class="panel stack"><div class="row" style="justify-content:space-between"><h2 class="card-title">Usuarios</h2><button class="btn primary" id="adm-new">Crear usuario</button></div>
+      <div class="table-wrap"><table class="data" id="adm-users"><thead><tr><th class="l">Usuario</th><th>Rol</th><th>Alta</th><th>Última vez</th><th>Partidas</th><th>% victorias</th><th class="l">Estilo</th><th></th></tr></thead><tbody>
+      ${users.map((u) => `<tr><td class="l"><button class="link" data-detail="${u.id}">${esc(u.username)}</button></td><td>${u.role}</td><td>${fmtDate(u.created_at)}</td><td>${fmtDate(u.last_seen)}</td>
+        <td>${u.games.length}</td><td>${pct(u.games.length ? u.games.filter((g) => g.won).length / u.games.length : null)}</td><td class="l">${esc(u.model?.style || "—")}</td>
+        <td><button class="btn small-btn" data-edit="${u.id}">Editar</button> <button class="btn small-btn" data-del="${u.id}">Borrar</button></td></tr>`).join("")}
+      </tbody></table></div></div>
+    <div class="grid-2">
+      <div class="panel"><h2 class="card-title">Autocrítica del bot profesional: errores por lance</h2>${mistakeRows.length ? `<table class="data"><thead><tr><th class="l">Lance</th><th class="l">Decisión</th><th>Veces</th><th>% errores</th></tr></thead><tbody>
+        ${mistakeRows.slice(0, 12).map((r) => `<tr><td class="l">${r.lance}</td><td class="l">${r.kind}</td><td>${Math.round(r.n)}</td><td>${pct(r.e / r.n)}</td></tr>`).join("")}</tbody></table>` : '<p class="muted">Aún no hay partidas revisadas.</p>'}</div>
+      <div class="panel"><h2 class="card-title">Calibración: lo que creía vs. lo que pasó</h2>${Object.keys(calib).length ? `<table class="data"><thead><tr><th class="l">Creía ganar</th><th>Ganó de verdad</th><th>Casos</th></tr></thead><tbody>
+        ${Object.entries(calib).sort((a, b) => a[0] - b[0]).map(([b, [w, n]]) => `<tr><td class="l">${b * 10}–${b * 10 + 10} %</td><td>${pct(w / n)}</td><td>${Math.round(n)}</td></tr>`).join("")}</tbody></table>
+        <p class="muted">Si "ganó de verdad" se aleja del tramo, el bot corrige sus estimaciones en las siguientes partidas.</p>` : '<p class="muted">Sin datos todavía.</p>'}</div>
+    </div>`;
+  document.getElementById("adm-new").onclick = () => userDialog();
+  el.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => userDialog(byUser[b.dataset.edit])));
+  el.querySelectorAll("[data-del]").forEach((b) => (b.onclick = () => deleteDialog(byUser[b.dataset.del])));
+  el.querySelectorAll("[data-detail]").forEach((b) => (b.onclick = () => userDetail(byUser[b.dataset.detail])));
+}
+function userDialog(u = null) {
+  openModal(`<h2 id="modal-title">${u ? `Editar ${esc(u.username)}` : "Crear usuario"}</h2>
+    <form id="uf" class="stack">
+      <label class="field">Usuario<input name="username" value="${u ? esc(u.username) : ""}" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_.\\-]+"></label>
+      <label class="field">Rol<select name="role"><option value="player" ${u?.role === "player" ? "selected" : ""}>Jugador</option><option value="admin" ${u?.role === "admin" ? "selected" : ""}>Administrador</option></select></label>
+      <label class="field">${u ? "Nueva contraseña (vacío = no cambiar)" : "Contraseña"}<input name="password" type="password" ${u ? "" : "required"} minlength="8" autocomplete="new-password"></label>
+      <div class="row"><button class="btn primary">${u ? "Guardar" : "Crear"}</button><button class="btn ghost" type="button" data-close>Cancelar</button></div>
+    </form>`);
+  document.getElementById("uf").onsubmit = async (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    try {
+      if (u) await cloud.adminUpdateUser(u.id, { username: f.get("username") !== u.username ? f.get("username") : null, role: f.get("role") !== u.role ? f.get("role") : null, password: f.get("password") || null });
+      else await cloud.adminCreateUser(f.get("username"), f.get("password"), f.get("role"));
+      $modal.close(); toast(u ? "Usuario actualizado" : "Usuario creado"); go("admin");
+    } catch (err) { toast(err.message); }
+  };
+}
+function deleteDialog(u) {
+  openModal(`<h2 id="modal-title">¿Borrar a ${esc(u.username)}?</h2><p>Se borran su cuenta, sus ${u.games.length} partidas y lo que la IA había aprendido de su juego. No se puede deshacer.</p>
+    <div class="row"><button class="btn primary" id="del-yes">Borrar definitivamente</button><button class="btn ghost" data-close>Cancelar</button></div>`);
+  document.getElementById("del-yes").onclick = async () => {
+    try { await cloud.adminDeleteUser(u.id); $modal.close(); toast("Usuario borrado"); go("admin"); } catch (err) { toast(err.message); }
+  };
+}
+function userDetail(u) {
+  const rates = u.model?.model?.rates || {};
+  const rate = (m) => { const r = rates[`${m}|*|*`]; return r && r[1] ? r[0] / r[1] : null; };
+  const stake = (b) => { const s = u.model?.model?.stakes?.[`*|${b}`]; return s && s[1] ? (s[0] / s[1]).toFixed(1) : "—"; };
+  const metrics = [["Agresividad (envida cuando abre)", "aggression"], ["Envida con mano buena", "bet_with_strong"], ["Envida con mano floja (farol)", "bet_with_weak"],
+    ["Acepta envites", "acceptance_rate"], ["Acepta con mano floja", "accept_with_weak"], ["Sube / reenvida", "raise_rate"], ["Órdagos", "ordago_rate"], ["Pide mus", "mus_rate"]];
+  openModal(`<h2 id="modal-title">${esc(u.username)} · ${esc(u.model?.style || "sin datos aún")}</h2>
+    <table class="data"><tbody>${metrics.map(([t, m]) => `<tr><td class="l">${t}</td><td>${pct(rate(m))}</td></tr>`).join("")}
+      <tr><td class="l">Piedras medias con mano buena / floja</td><td>${stake("fuerte")} / ${stake("floja")}</td></tr>
+      <tr><td class="l">Partidas que conoce la IA</td><td>${u.model?.model?.games ?? 0}</td></tr></tbody></table>
+    <h3>Últimas partidas</h3><ul>${u.games.slice(-8).reverse().map((g) => `<li>${fmtDate(g.created_at)} · ${g.won ? "Victoria" : "Derrota"} ${g.score[0]}–${g.score[1]} contra ${esc(g.rivals || "?")}</li>`).join("") || "<li>Ninguna</li>"}</ul>
+    <div class="row"><button class="btn ghost" data-close>Cerrar</button></div>`);
 }
 
 // ------------------------------------------------------------------ arranque
@@ -1060,6 +1218,13 @@ async function boot() {
   applySettings();
   if (LOCAL) {
     try { await startWorker(); } catch { return; }
+    try {
+      if (await cloud.initCloud()) {
+        const prof = cloud.cloudProfile();
+        if (prof) await attachCloudProfile(prof);
+        else await api("/api/auth/logout", { method: "POST" }); // sin sesión en la nube, sin perfil
+      }
+    } catch (err) { toast(`Cuentas no disponibles: ${err.message}`); }
   }
   await loadUser();
   const join = location.hash.match(/^#join\/([\w-]+)\/([\w-]+)/);

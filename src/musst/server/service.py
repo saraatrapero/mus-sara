@@ -241,6 +241,7 @@ class MusService:
             "por_lance": {k: dict(v) for k, v in by_lance.items()},
             "evolucion": timeline,
             "estilo": model.profile(),
+            "perfil": model.style(),
             "logros": self.repo.achievements(user.id),
         }
 
