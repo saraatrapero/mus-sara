@@ -132,3 +132,20 @@ limitaciones y cómo se ha probado.
   errores reales (aceptar perdiendo, rechazar ganando). Corrige sus estimaciones encogiendo
   hacia la original mientras hay pocos datos.
 - **Pruebas**: `tests/unit/test_autocritica.py`.
+
+## ADR-015 · Cuentas con contraseña dentro del navegador (GitHub Pages)
+
+- **Problema**: usuarios con contraseña y un administrador usando solo GitHub Pages.
+- **Decisión**: el backend que corre en el navegador usa el mismo `Repository` que el
+  servidor: contraseñas con hash scrypt (paquete `hashlib` de Pyodide) en SQLite sobre
+  IndexedDB. La primera cuenta registrada en un navegador es la administradora. El panel de
+  administración usa los mismos casos de uso (`MusService.admin_*`) en el navegador y en el
+  servidor FastAPI.
+- **Limitaciones (aceptadas)**: cada navegador tiene sus propias cuentas, y quien controla el
+  equipo puede leer o borrar la base de datos local. Separa a quienes comparten un equipo,
+  pero no es seguridad frente al dueño del equipo. Para cuentas compartidas entre dispositivos
+  está preparada la opción con Supabase (ADR-013), que se activa con dos variables del
+  repositorio sin tocar el código.
+- **Pruebas**: `tests/integration/test_web_backend.py` (registro, primer administrador,
+  contraseñas, panel, permisos) y `tests/integration/test_api.py::test_administracion_en_el_servidor`;
+  prueba manual en Chrome.

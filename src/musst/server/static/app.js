@@ -1030,10 +1030,8 @@ function loginDialog() {
       ${LOCAL && cloud.cloudEnabled() ? `<label class="field">Contraseña<input name="password" type="password" autocomplete="current-password" required minlength="8"></label>
       <p class="muted">Tu cuenta guarda tus partidas y lo que la IA aprende de tu forma de jugar, en cualquier dispositivo.</p>
       <div class="row"><button class="btn primary" value="login">Entrar</button><button class="btn" value="register">Crear cuenta</button><button class="btn ghost" type="button" data-close>Cancelar</button></div>`
-      : LOCAL ? `<p class="muted">Perfil local: tus partidas, estadísticas y lo que el bot aprende de ti se guardan solo en este navegador. No hace falta contraseña.</p>
-      <div class="row"><button class="btn primary" value="login">Usar este perfil</button><button class="btn ghost" type="button" data-close>Cancelar</button></div>`
       : `<label class="field">Contraseña<input name="password" type="password" autocomplete="current-password" required minlength="8"></label>
-      <p class="muted">Solo guardamos tu usuario y un hash de la contraseña. Nada más.</p>
+      <p class="muted">${LOCAL ? "Las cuentas se guardan en este navegador. La primera que se crea es la de administración." : "Solo guardamos tu usuario y un hash de la contraseña. Nada más."}</p>
       <div class="row"><button class="btn primary" value="login">Entrar</button><button class="btn" value="register">Crear cuenta</button><button class="btn ghost" type="button" data-close>Cancelar</button></div>`}
     </form>`);
   document.getElementById("lf").onsubmit = async (e) => {
@@ -1051,7 +1049,7 @@ function loginDialog() {
       }
       $modal.close();
       await loadUser();
-      toast(kind === "register" ? "Cuenta creada" : `Hola, ${user ? user.username : ""}`);
+      toast(kind === "register" ? (canAdmin() ? "Cuenta creada: eres administrador/a" : "Cuenta creada") : `Hola, ${user ? user.username : ""}`);
       go("home");
     } catch (err) { toast(err.message); }
   };
@@ -1069,14 +1067,24 @@ function updateAccount() {
   document.getElementById("account").textContent = user ? user.username : "Entrar";
   const nav = document.querySelector(".topnav");
   let admin = nav.querySelector('[data-nav="admin"]');
-  if (cloud.isAdmin() && !admin) {
+  if (canAdmin() && !admin) {
     admin = document.createElement("button"); admin.dataset.nav = "admin"; admin.textContent = "Admin"; nav.append(admin);
-  } else if (!cloud.isAdmin() && admin) admin.remove();
+  } else if (!canAdmin() && admin) admin.remove();
 }
+const canAdmin = () => (cloud.cloudEnabled() ? cloud.isAdmin() : user?.role === "admin");
+// El panel funciona igual con Supabase o con las cuentas del propio navegador / servidor.
+const adminApi = {
+  data: () => (cloud.cloudEnabled() ? cloud.adminData() : api("/api/admin/overview")),
+  create: (username, password, role) => (cloud.cloudEnabled() ? cloud.adminCreateUser(username, password, role)
+    : api("/api/admin/users", { method: "POST", body: { username, password, role } })),
+  update: (id, changes) => (cloud.cloudEnabled() ? cloud.adminUpdateUser(id, changes)
+    : api(`/api/admin/users/${id}`, { method: "PUT", body: Object.fromEntries(Object.entries(changes).filter(([, v]) => v)) })),
+  remove: (id) => (cloud.cloudEnabled() ? cloud.adminDeleteUser(id) : api(`/api/admin/users/${id}`, { method: "DELETE" })),
+};
 // Cuenta en Supabase → perfil local del motor (mismo nombre) + lo que la IA ya sabía.
 async function attachCloudProfile(prof) {
   if (!prof) return;
-  await api("/api/auth/login", { method: "POST", body: { username: prof.username } });
+  await api("/api/auth/login", { method: "POST", body: { username: prof.username, cloud: true } });
   try {
     const memory = await cloud.pullMemory();
     await api("/api/cloud/import", { method: "POST", body: memory });
@@ -1118,10 +1126,10 @@ function barChart(rows, { label, unit = "", max } = {}) {
     <figcaption class="muted">${esc(label)} · máximo ${top}${unit}</figcaption></figure>`;
 }
 async function adminView() {
-  if (!cloud.isAdmin()) { go("home"); return; }
+  if (!canAdmin()) { go("home"); return; }
   $main.append(h('<div class="page stack"><h1 class="page-title">Administración</h1><div id="adm">Cargando…</div></div>'));
   let d;
-  try { d = await cloud.adminData(); } catch (err) { document.getElementById("adm").textContent = err.message; return; }
+  try { d = await adminApi.data(); } catch (err) { document.getElementById("adm").textContent = err.message; return; }
   const byUser = Object.fromEntries(d.users.map((u) => [u.id, { ...u, games: [], model: null }]));
   d.games.forEach((g) => byUser[g.user_id]?.games.push(g));
   d.models.forEach((m) => { if (byUser[m.user_id]) byUser[m.user_id].model = m; });
@@ -1186,8 +1194,8 @@ function userDialog(u = null) {
     e.preventDefault();
     const f = new FormData(e.target);
     try {
-      if (u) await cloud.adminUpdateUser(u.id, { username: f.get("username") !== u.username ? f.get("username") : null, role: f.get("role") !== u.role ? f.get("role") : null, password: f.get("password") || null });
-      else await cloud.adminCreateUser(f.get("username"), f.get("password"), f.get("role"));
+      if (u) await adminApi.update(u.id, { username: f.get("username") !== u.username ? f.get("username") : null, role: f.get("role") !== u.role ? f.get("role") : null, password: f.get("password") || null });
+      else await adminApi.create(f.get("username"), f.get("password"), f.get("role"));
       $modal.close(); toast(u ? "Usuario actualizado" : "Usuario creado"); go("admin");
     } catch (err) { toast(err.message); }
   };
@@ -1196,7 +1204,7 @@ function deleteDialog(u) {
   openModal(`<h2 id="modal-title">¿Borrar a ${esc(u.username)}?</h2><p>Se borran su cuenta, sus ${u.games.length} partidas y lo que la IA había aprendido de su juego. No se puede deshacer.</p>
     <div class="row"><button class="btn primary" id="del-yes">Borrar definitivamente</button><button class="btn ghost" data-close>Cancelar</button></div>`);
   document.getElementById("del-yes").onclick = async () => {
-    try { await cloud.adminDeleteUser(u.id); $modal.close(); toast("Usuario borrado"); go("admin"); } catch (err) { toast(err.message); }
+    try { await adminApi.remove(u.id); $modal.close(); toast("Usuario borrado"); go("admin"); } catch (err) { toast(err.message); }
   };
 }
 function userDetail(u) {

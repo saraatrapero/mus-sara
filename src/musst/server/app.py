@@ -79,6 +79,20 @@ class ActionRequest(BaseModel):
     action: dict[str, Any]
 
 
+class AdminUser(BaseModel):
+    username: str = Field(min_length=3, max_length=32, pattern=r"^[A-Za-z0-9_.-]+$")
+    password: str = Field(min_length=8, max_length=128)
+    role: Literal["player", "admin"] = "player"
+
+
+class AdminUserUpdate(BaseModel):
+    username: str | None = Field(
+        default=None, min_length=3, max_length=32, pattern=r"^[A-Za-z0-9_.-]+$"
+    )
+    password: str | None = Field(default=None, min_length=8, max_length=128)
+    role: Literal["player", "admin"] | None = None
+
+
 class SignalRequest(BaseModel):
     signal: str = Field(min_length=2, max_length=32)
 
@@ -164,6 +178,29 @@ def create_app(repo: Repository | None = None, dev_mode: bool = DEV_MODE) -> Fas
         body: ProfileUpdate, user: Annotated[User, Depends(require_user)]
     ) -> dict[str, bool]:
         return service.update_me(user, body.avatar, body.settings)
+
+    # ------------------------------------------------------------------ administración
+    @app.get("/api/admin/overview")
+    def admin_overview(user: Annotated[User | None, Depends(current_user)]) -> dict[str, Any]:
+        return service.admin_overview(user)
+
+    @app.post("/api/admin/users")
+    def admin_create(
+        body: AdminUser, user: Annotated[User | None, Depends(current_user)]
+    ) -> dict[str, Any]:
+        return service.admin_create_user(user, body.model_dump())
+
+    @app.put("/api/admin/users/{user_id}")
+    def admin_update(
+        user_id: int, body: AdminUserUpdate, user: Annotated[User | None, Depends(current_user)]
+    ) -> dict[str, bool]:
+        return service.admin_update_user(user, user_id, body.model_dump())
+
+    @app.delete("/api/admin/users/{user_id}")
+    def admin_delete(
+        user_id: int, user: Annotated[User | None, Depends(current_user)]
+    ) -> dict[str, bool]:
+        return service.admin_delete_user(user, user_id)
 
     # ------------------------------------------------------------------ partidas
     @app.post("/api/games")

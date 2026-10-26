@@ -165,3 +165,23 @@ def test_ayuda_entrenamiento_y_arena(client):
     )
     assert watch.status_code == 200 and watch.json()["history"]
     assert client.get("/api/bots").status_code == 200
+
+
+def test_administracion_en_el_servidor():
+    repo = Repository(":memory:")
+    client = TestClient(create_app(repo, dev_mode=False))
+    creds = {"username": "sara", "password": "contraseña-segura"}
+    client.post("/api/auth/register", json=creds)
+    assert client.get("/api/admin/overview").status_code == 403
+    repo.set_role(repo.authenticate(**creds).id, "admin")
+    assert client.get("/api/me").json()["role"] == "admin"
+    r = client.post("/api/admin/users", json={"username": "ana", "password": "contraseña-2"})
+    assert r.status_code == 200
+    uid = r.json()["id"]
+    assert client.put(f"/api/admin/users/{uid}", json={"role": "admin"}).status_code == 200
+    assert client.put(f"/api/admin/users/{uid}", json={"role": "jefe"}).status_code == 422
+    assert {u["username"] for u in client.get("/api/admin/overview").json()["users"]} == {
+        "sara",
+        "ana",
+    }
+    assert client.delete(f"/api/admin/users/{uid}").status_code == 200

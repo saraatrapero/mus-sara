@@ -114,6 +114,19 @@ class User:
     username: str
     avatar: str | None
     settings: dict[str, Any]
+    role: str = "player"  # player | admin
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role == "admin"
+
+
+ROLES = ("player", "admin")
+USER_COLS = "id, username, avatar, settings_json, role"
+
+
+def _user(row: Any) -> User:
+    return User(row[0], row[1], row[2], json.loads(row[3]), row[4])
 
 
 class Repository:
@@ -128,6 +141,12 @@ class Repository:
             self._shared = sqlite3.connect(":memory:", check_same_thread=False)
         with self.conn() as c:
             c.executescript(SCHEMA)
+            # Migración: bases creadas antes de existir los roles.
+            cols = {r[1] for r in c.execute("PRAGMA table_info(users)")}
+            if "role" not in cols:
+                c.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'player'")
+            if "last_seen" not in cols:
+                c.execute("ALTER TABLE users ADD COLUMN last_seen REAL")
 
     @contextmanager
     def conn(self) -> Iterator[sqlite3.Connection]:
@@ -162,11 +181,10 @@ class Repository:
         """
         with self.conn() as c:
             row = c.execute(
-                "SELECT id, username, avatar, settings_json FROM users WHERE username = ?",
-                (username,),
+                f"SELECT {USER_COLS} FROM users WHERE username = ?", (username,)
             ).fetchone()
             if row is not None:
-                return User(row[0], row[1], row[2], json.loads(row[3]))
+                return User(row[0], row[1], row[2], json.loads(row[3]), row[4])
             cur = c.execute(
                 "INSERT INTO users (username, password_hash, created_at) VALUES (?, '!local', ?)",
                 (username, time.time()),
@@ -177,7 +195,7 @@ class Repository:
     def authenticate(self, username: str, password: str) -> User | None:
         with self.conn() as c:
             row = c.execute(
-                "SELECT id, username, password_hash, avatar, settings_json FROM users WHERE username = ?",
+                "SELECT id, username, password_hash, avatar, settings_json, role FROM users WHERE username = ?",
                 (username,),
             ).fetchone()
         if row is None:
@@ -185,14 +203,103 @@ class Repository:
             return None
         if not verify_password(password, row[2]):
             return None
-        return User(row[0], row[1], row[3], json.loads(row[4]))
+        self.touch(row[0])
+        return User(row[0], row[1], row[3], json.loads(row[4]), row[5])
 
     def get_user(self, user_id: int) -> User | None:
         with self.conn() as c:
+            row = c.execute(f"SELECT {USER_COLS} FROM users WHERE id = ?", (user_id,)).fetchone()
+        return _user(row) if row else None
+
+    def user_by_name(self, username: str) -> tuple[User, bool] | None:
+        """Usuario por nombre y si tiene contraseña (los perfiles locales antiguos no)."""
+        with self.conn() as c:
             row = c.execute(
-                "SELECT id, username, avatar, settings_json FROM users WHERE id = ?", (user_id,)
+                f"SELECT {USER_COLS}, password_hash FROM users WHERE username = ?", (username,)
             ).fetchone()
-        return User(row[0], row[1], row[2], json.loads(row[3])) if row else None
+        return (_user(row), row[5] != "!local") if row else None
+
+    def touch(self, user_id: int) -> None:
+        with self.conn() as c:
+            c.execute("UPDATE users SET last_seen = ? WHERE id = ?", (time.time(), user_id))
+
+    # ------------------------------------------------------------------ administración
+    def list_users(self) -> list[dict[str, Any]]:
+        with self.conn() as c:
+            rows = c.execute(
+                "SELECT id, username, role, created_at, last_seen FROM users ORDER BY created_at"
+            ).fetchall()
+        return [
+            {"id": r[0], "username": r[1], "role": r[2], "created_at": r[3], "last_seen": r[4]}
+            for r in rows
+        ]
+
+    def count_admins(self) -> int:
+        with self.conn() as c:
+            return int(c.execute("SELECT COUNT(*) FROM users WHERE role = 'admin'").fetchone()[0])
+
+    def set_role(self, user_id: int, role: str) -> None:
+        if role not in ROLES:
+            raise ValueError("Rol no válido")
+        with self.conn() as c:
+            c.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
+
+    def set_password(self, user_id: int, password: str) -> None:
+        with self.conn() as c:
+            c.execute(
+                "UPDATE users SET password_hash = ? WHERE id = ?",
+                (hash_password(password), user_id),
+            )
+            c.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+
+    def rename_user(self, user_id: int, username: str) -> None:
+        with self.conn() as c:
+            c.execute("UPDATE users SET username = ? WHERE id = ?", (username, user_id))
+
+    def delete_user(self, user_id: int) -> None:
+        """Borra la cuenta, sus estadísticas, logros, sesiones y lo que la IA sabía de él.
+
+        Las partidas se conservan (las jugaron también otros) pero quedan anónimas."""
+        with self.conn() as c:
+            for table in ("statistics", "achievements", "sessions"):
+                c.execute(f"DELETE FROM {table} WHERE user_id = ?", (user_id,))
+            c.execute("UPDATE game_players SET user_id = NULL WHERE user_id = ?", (user_id,))
+            c.execute("UPDATE games SET created_by = NULL WHERE created_by = ?", (user_id,))
+            c.execute("DELETE FROM player_models WHERE player_id = ?", (f"user:{user_id}",))
+            c.execute("DELETE FROM users WHERE id = ?", (user_id,))
+
+    def all_statistics(self) -> list[dict[str, Any]]:
+        """Una fila por (usuario, partida terminada), con los niveles de los bots de la mesa."""
+        with self.conn() as c:
+            rows = c.execute(
+                """SELECT s.user_id, s.game_id, s.won, s.stats_json, s.created_at, g.mode,
+                          g.seats_json, gp.seat
+                   FROM statistics s JOIN games g ON g.id = s.game_id
+                   LEFT JOIN game_players gp ON gp.game_id = s.game_id AND gp.user_id = s.user_id
+                   ORDER BY s.created_at"""
+            ).fetchall()
+        out = []
+        for user_id, game_id, won, stats_json, at, mode, seats_json, seat in rows:
+            stats = json.loads(stats_json)
+            seats = {s["seat"]: s for s in json.loads(seats_json)}
+            seat = seat if seat is not None else 0
+            score = stats.get("score") or [0, 0]
+            team = seat % 2
+            out.append(
+                {
+                    "id": game_id,
+                    "user_id": user_id,
+                    "mode": mode,
+                    "rivals": seats.get((seat + 1) % 4, {}).get("level"),
+                    "partner": seats.get((seat + 2) % 4, {}).get("level") or "humano",
+                    "won": bool(won),
+                    "score": [score[team], score[1 - team]],
+                    "reason": stats.get("reason"),
+                    "stats": stats,
+                    "created_at": at,
+                }
+            )
+        return out
 
     def update_user(self, user_id: int, avatar: str | None, settings: dict[str, Any]) -> None:
         with self.conn() as c:
