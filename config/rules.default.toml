@@ -1,0 +1,19 @@
+# Reglas por defecto de MUS.ST. Los valores marcados [CONVENCIÓN] no aparecen en el
+# Reglamento FEM (ver docs/game-rules.md) y deben validarse con el profesor.
+[rules]
+target_points = 40          # FEM Intro E: entre 40 y 60
+eight_kings = true          # FEM II.3: ocho reyes y ocho ases
+min_bet = 2                 # FEM VIII.8: envido = 2
+max_bet = 99                # tope técnico (la FEM permite cualquier cantidad)
+negada_points = 1           # FEM VIII.8
+paso_points = 1             # [CONVENCIÓN] grande/chica en paso
+par_points = 1              # [CONVENCIÓN]
+medias_points = 2           # [CONVENCIÓN]
+duples_points = 3           # [CONVENCIÓN]
+juego_31_points = 3         # [CONVENCIÓN]
+juego_points = 2            # [CONVENCIÓN]
+punto_points = 1            # [CONVENCIÓN]
+min_discard = 1             # [CONVENCIÓN]
+max_mus_rounds = 10         # salvaguarda técnica contra bucles de mus
+end_on_immediate_points = true
+team_in_threshold = 4       # FEM VII.7 "estamos dentro"

@@ -12,15 +12,16 @@
 @dataclass(frozen=True)
 class AgentReport:
     agent: str
-    estimates: Mapping[str, Estimate]        # p. ej. "p_win_grande": Estimate(0.72, conf=0.8)
+    estimates: Mapping[str, Estimate]  # p. ej. "p_win_grande": Estimate(0.72, conf=0.8)
     recommendations: tuple[Recommendation, ...] = ()
-    notes: tuple[str, ...] = ()               # para debugging, no para el jugador
+    notes: tuple[str, ...] = ()  # para debugging, no para el jugador
+
 
 @dataclass(frozen=True)
 class Estimate:
     value: float
-    confidence: float        # 0..1, se muestra como Baja / Media / Alta
-    n: int                   # tamaño de muestra que la respalda
+    confidence: float  # 0..1, se muestra como Baja / Media / Alta
+    n: int  # tamaño de muestra que la respalda
 ```
 
 ## 2. Agentes
@@ -55,16 +56,17 @@ class Estimate:
 class Decision:
     action: Action
     confidence: float
-    evidence: tuple[Evidence, ...]          # factores y su contribución
+    evidence: tuple[Evidence, ...]  # factores y su contribución
     agents_consulted: tuple[str, ...]
     alternatives: tuple[ScoredAction, ...]  # para el análisis posterior
 
+
 @dataclass(frozen=True)
-class DecisionExplanation:                  # para debugging, modo dev y defensa
-    decision: str                           # "BET_4"
-    factors: Mapping[str, float]            # hand_strength, opponent_bluff_p, score_context, risk
+class DecisionExplanation:  # para debugging, modo dev y defensa
+    decision: str  # "BET_4"
+    factors: Mapping[str, float]  # hand_strength, opponent_bluff_p, score_context, risk
     confidence: float
-    narrative: str                          # "EV(quiero)=+1.3 vs EV(no quiero)=-1.0; P(farol)=0.63 (conf. media)"
+    narrative: str  # "EV(quiero)=+1.3 vs EV(no quiero)=-1.0; P(farol)=0.63 (conf. media)"
 ```
 
 Criterio: `argmax_a [EV(a) − λ·Riesgo(a)·(1 − confianza)]`, con λ según el nivel y el

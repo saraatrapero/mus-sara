@@ -6,6 +6,7 @@
 # musst/bots/api.py — la ÚNICA superficie que un bot externo necesita importar
 from abc import ABC, abstractmethod
 
+
 class Bot(ABC):
     """Jugador autónomo de Mus. Controla UN asiento."""
 
@@ -33,8 +34,10 @@ Bot mínimo:
 from musst.bots.api import Bot, Observation, Action
 import random
 
+
 class RandomBot(Bot):
     name = "random"
+
     def decide(self, observation: Observation) -> Action:
         return random.choice(observation.legal_actions).sample()
 ```

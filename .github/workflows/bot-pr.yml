@@ -1,0 +1,27 @@
+name: Validación de bots
+
+on:
+  pull_request:
+    paths: ["bots/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e ".[dev]"
+      - name: Análisis estático (llamadas prohibidas)
+        run: |
+          if grep -rnE "import (os|subprocess|socket|shutil|ctypes)|from (os|subprocess|socket|shutil|ctypes)|__import__|\beval\(|\bexec\(|open\(" bots/*/bot.py bots/*/*.py; then
+            echo "::error::Los bots no pueden usar os, subprocess, socket, eval, exec ni abrir ficheros"; exit 1
+          fi
+      - name: Tests de conformidad
+        run: pytest tests/bot_conformance -v
+      - name: Mini-torneo contra los bots de referencia
+        run: musst-arena --games 3 --out scoreboard_out
+      - run: cat scoreboard_out/scoreboard.md >> "$GITHUB_STEP_SUMMARY"

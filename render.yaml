@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: musst
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/bots
+    envVars:
+      - key: MUSST_SECURE_COOKIES
+        value: "1"

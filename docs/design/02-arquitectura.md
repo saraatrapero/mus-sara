@@ -1,5 +1,9 @@
 # 02 — Arquitectura
 
+> **Nota de implementación.** Tres elecciones de esta tabla cambiaron al implementar: frontend
+> en JavaScript sin compilación (ADR-005), `sqlite3` en lugar de SQLAlchemy (ADR-006) y
+> `scrypt` en lugar de argon2 (ADR-007). Ver [docs/adr](../adr/index.md).
+
 ## 1. Vista general
 
 La arquitectura es **hexagonal**: un núcleo puro (motor de Mus) sin dependencias, rodeado de

@@ -1,0 +1,22 @@
+# Parámetros de los niveles de bot (espejo documentado de musst/agents/orchestrator.py).
+[medio]
+agents = ["cartas", "probabilidad", "marcador"]
+samples = 150
+samples_deep = 300
+risk_aversion = 0.35
+noise = 0.05
+learn = false
+
+[profesional]
+agents = ["cartas", "comportamiento", "probabilidad", "farol", "marcador", "pareja"]
+samples = 300
+samples_deep = 800
+risk_aversion = 0.25
+noise = 0.0
+learn = true
+
+[modelo_rival]
+bet_threshold = 0.7          # fuerza a partir de la cual se supone un envite "de verdad"
+bet_threshold_step = 0.1     # cada reenvite exige más fuerza
+accept_floor_bet = 0.2       # P mínima de que el rival acepte un envite
+accept_floor_ordago = 0.15   # P mínima de que el rival acepte un órdago

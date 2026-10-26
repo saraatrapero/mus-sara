@@ -14,18 +14,20 @@
 
 ```python
 @dataclass
-class Rate:                       # Beta(α, β)
-    alpha: float = 1.0            # prior configurable
+class Rate:  # Beta(α, β)
+    alpha: float = 1.0  # prior configurable
     beta: float = 1.0
+
     def mean(self) -> float: ...
-    def confidence(self) -> float: ...     # función de α+β (tamaño efectivo de muestra)
+    def confidence(self) -> float: ...  # función de α+β (tamaño efectivo de muestra)
     def update(self, success: bool, weight: float = 1.0) -> None: ...
     def decay(self, factor: float) -> None: ...  # olvido exponencial
 
+
 class PlayerModel:
     player_id: str
-    global_: dict[Metric, Rate]                       # aggression, acceptance_rate, ...
-    contextual: dict[tuple[Metric, Context], Rate]    # (aggression, (GRANDE, BEHIND))
+    global_: dict[Metric, Rate]  # aggression, acceptance_rate, ...
+    contextual: dict[tuple[Metric, Context], Rate]  # (aggression, (GRANDE, BEHIND))
     sample_size: int
     last_updated: datetime
     drift: DriftState
