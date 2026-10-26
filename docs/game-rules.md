@@ -85,6 +85,8 @@ Activadas con `signals_enabled` (la web las activa; el torneo y los tests de ref
 - **Quién ve la seña**: exactamente quienes miran en ese instante al que la hace. Si es el
   compañero, la ventaja es de la pareja; si es un rival, la información es para el rival; si
   no mira nadie, la seña se pierde. Quien la hace sabe quién le miraba.
+- **Elegir a quién miras**: una persona puede fijar su mirada (`MusGame.look`, en la web
+  pulsando la cara de un jugador) para vigilar a su compañero; dura `gaze_max_ticks` pasos.
 - **Tiempo**: avanza con cada acción y con `MusGame.tick()` (en la web, cada ~2 s).
 - **Privacidad**: cada asiento solo recibe las señas que ha visto (eventos privados
   `SignalSeen`/`SignalMade`). Los bots usan las señas vistas para restringir las manos que

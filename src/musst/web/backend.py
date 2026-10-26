@@ -109,7 +109,9 @@ class LocalBackend:
         session = self.service.manager.get(game_id)
         if session is None or not token or session.seat_for_token(token) is not None:
             return
-        seat = session.seats[0]
+        # Las personas del mismo dispositivo llevan el asiento en el token ("2.xxxx").
+        index = int(token[0]) if len(token) > 2 and token[1] == "." and token[0] in "123" else 0
+        seat = session.seats[index]
         if seat.kind == "human" and seat.token is None:
             seat.token = token
 
@@ -228,6 +230,9 @@ class LocalBackend:
                     return 200, svc.deal(game_id, token)
                 if sub == "tick" and method == "POST":
                     return 200, svc.tick(game_id, token)
+                if sub == "look" and method == "POST":
+                    target = body.get("target")
+                    return 200, svc.look(game_id, token, None if target is None else int(target))
                 if sub == "signal" and method == "POST":
                     return 200, svc.signal(game_id, token, str(body.get("signal", "")))
                 if sub == "action" and method == "POST":
