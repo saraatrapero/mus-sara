@@ -45,7 +45,16 @@ def _iso(ts: float | None) -> str | None:
     return datetime.fromtimestamp(ts, UTC).isoformat() if ts else None
 
 
-PROFILE_SETTINGS = {"theme", "text_size", "reduce_motion", "sound", "speed", "table", "card_back"}
+PROFILE_SETTINGS = {
+    "theme",
+    "text_size",
+    "reduce_motion",
+    "sound",
+    "voice",
+    "speed",
+    "table",
+    "card_back",
+}
 
 
 class ApiError(Exception):
@@ -204,6 +213,13 @@ class MusService:
             raise ApiError(422, "Objetivo o semilla fuera de rango")
         name = user.username if user else str(body.get("name") or "Tú")[:24]
         names = {str(k): str(v)[:24] for k, v in (body.get("names") or {}).items()}
+        # Personas en el mismo dispositivo: "pareja" = yo y otra persona contra 2 bots;
+        # "cuatro" = cuatro personas.
+        players = body.get("players", "bot")
+        if players not in ("bot", "pareja", "cuatro"):
+            raise ApiError(422, "Modo de jugadores no válido")
+        seats_h = {"bot": (), "pareja": (2,), "cuatro": (1, 2, 3)}[players]
+        local_humans = {s: names.get(str(s)) or f"Jugador {s + 1}" for s in seats_h}
         session, token = self.manager.create(
             mode,
             name,
@@ -215,12 +231,24 @@ class MusService:
             names,
             body.get("avatar") or (user.avatar if user else None),
             bool(body.get("signals", True)),
+            local_humans,
         )
         return {
             "game_id": session.id,
             "seat_token": token,
+            "seat_tokens": {
+                str(s.index): s.token for s in session.seats if s.kind == "human" and s.token
+            },
             "observation": self.manager.observation(session, session.seats[0]),
         }
+
+    def look(self, game_id: str, token: str | None, target: int | None) -> dict[str, Any]:
+        session, seat = self.seat_of(game_id, token)
+        try:
+            self.manager.human_look(session, seat, target)
+        except IllegalAction as exc:
+            raise ApiError(422, str(exc)) from exc
+        return self.manager.observation(session, seat)
 
     def join(self, user: User | None, game_id: str, invite: str, name: str) -> dict[str, Any]:
         try:

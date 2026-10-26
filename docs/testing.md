@@ -1,7 +1,7 @@
 # Testing y experimentos
 
 ```bash
-pytest                         # 178 tests
+pytest                         # 180 tests
 pytest --cov=musst             # cobertura (88 % global; motor 93-100 %)
 pytest tests/privacy           # solo fugas de información
 pytest tests/bot_conformance   # conformidad de todos los bots registrados

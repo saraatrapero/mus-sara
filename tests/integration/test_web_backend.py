@@ -228,3 +228,34 @@ def test_sincronizacion_con_la_nube(tmp_path):
     assert other.handle("POST", "/api/cloud/import", {"bot_memory": {"hack": {}}}, None)[1] == {
         "imported": []
     }
+
+
+def test_dos_y_cuatro_personas_en_el_mismo_dispositivo(tmp_path):
+    b = LocalBackend(tmp_path)
+    _, data = b.handle(
+        "POST", "/api/games", {"players": "pareja", "names": {"2": "Ana"}, "seed": 6}, None
+    )
+    tokens = data["seat_tokens"]
+    assert set(tokens) == {"0", "2"}
+    seats = data["observation"]["seats"]
+    assert seats[2]["kind"] == "human" and seats[2]["name"] == "Ana"
+    assert seats[1]["kind"] == seats[3]["kind"] == "bot"
+    _, obs2 = b.handle("GET", f"/api/games/{data['game_id']}", None, tokens["2"])
+    assert obs2["seat"] == 2  # cada persona ve solo su asiento
+    _, four = b.handle("POST", "/api/games", {"players": "cuatro", "seed": 7}, None)
+    assert set(four["seat_tokens"]) == {"0", "1", "2", "3"}
+    assert all(s["kind"] == "human" for s in four["observation"]["seats"])
+    # tras recargar la página, cada persona recupera su asiento
+    again = LocalBackend(tmp_path)
+    for seat, tok in four["seat_tokens"].items():
+        status, obs = again.handle("GET", f"/api/games/{four['game_id']}", None, tok)
+        assert status == 200 and obs["seat"] == int(seat)
+
+
+def test_elegir_a_quien_miro(backend):
+    _, data = backend.handle("POST", "/api/games", {"seed": 3}, None)
+    gid, tok = data["game_id"], data["seat_token"]
+    backend.handle("POST", f"/api/games/{gid}/deal", None, tok)
+    status, obs = backend.handle("POST", f"/api/games/{gid}/look", {"target": 2}, tok)
+    assert status == 200 and obs["gazes"][0] == 2
+    assert backend.handle("POST", f"/api/games/{gid}/look", {"target": 0}, tok)[0] == 422

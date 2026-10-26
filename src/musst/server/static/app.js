@@ -12,7 +12,7 @@ const $modalBody = document.getElementById("modal-body");
 
 // ------------------------------------------------------------------ ajustes
 const DEFAULT_SETTINGS = {
-  theme: "auto", text_size: 1, reduce_motion: false, sound: true, speed: 1, table: "verde", card_back: "rayas",
+  theme: "auto", text_size: 1, reduce_motion: false, sound: true, voice: true, speed: 1, table: "verde", card_back: "rayas",
 };
 const store = {
   get(key, fallback) {
@@ -124,10 +124,14 @@ $modal.addEventListener("click", (e) => { if (e.target === $modal || e.target.da
 const SUITS = { O: "Oros", C: "Copas", E: "Espadas", B: "Bastos" };
 const RANK_LABEL = { 1: "A", 10: "S", 11: "C", 12: "R" };
 const SUIT_SVG = {
-  O: '<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="11" fill="#d4a72c" stroke="#7a5a10" stroke-width="2"/><circle cx="16" cy="16" r="5" fill="none" stroke="#7a5a10" stroke-width="2"/></svg>',
-  C: '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M8 6h16c0 8-3 12-8 12S8 14 8 6z" fill="#b8323f" stroke="#5e1018" stroke-width="2"/><path d="M16 18v6M11 27h10" stroke="#5e1018" stroke-width="2.5" stroke-linecap="round"/></svg>',
-  E: '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3l3 4v15h-6V7z" fill="#5a7da8" stroke="#1d3553" stroke-width="1.8"/><path d="M9 22h14M16 22v7" stroke="#1d3553" stroke-width="2.6" stroke-linecap="round"/></svg>',
-  B: '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M12 28l2-22c1-3 5-3 6 0l-2 22z" fill="#5f8a3a" stroke="#2c4318" stroke-width="1.8"/><circle cx="17" cy="11" r="1.5" fill="#2c4318"/><circle cx="16" cy="17" r="1.5" fill="#2c4318"/></svg>',
+  // Oros: moneda de oro labrada
+  O: '<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13" fill="#e8b830" stroke="#8a5e0b" stroke-width="1.6"/><circle cx="16" cy="16" r="9.5" fill="#f4cf5a" stroke="#a87410" stroke-width="1.1"/><path d="M16 9.5l1.8 4.7 4.7 1.8-4.7 1.8L16 22.5l-1.8-4.7-4.7-1.8 4.7-1.8z" fill="#c4392f"/><circle cx="16" cy="16" r="1.6" fill="#8a5e0b"/></svg>',
+  // Copas: cáliz rojo con borde dorado
+  C: '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 4h18c0 7-3 11.5-9 11.5S7 11 7 4z" fill="#c8313f" stroke="#6e1520" stroke-width="1.4"/><path d="M7 4h18" stroke="#e8b830" stroke-width="2.4"/><path d="M14 15.5h4l-.8 6h-2.4z" fill="#e8b830" stroke="#8a5e0b" stroke-width=".9"/><ellipse cx="16" cy="24" rx="5.5" ry="2.2" fill="#e8b830" stroke="#8a5e0b" stroke-width=".9"/><path d="M10 27.5h12" stroke="#8a5e0b" stroke-width="2.2" stroke-linecap="round"/></svg>',
+  // Espadas: hoja azul, guarda y pomo dorados
+  E: '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 1.5l2.6 4V21h-5.2V5.5z" fill="#6c95c6" stroke="#1f3b5e" stroke-width="1.2"/><path d="M16 4v16" stroke="#e7f0fb" stroke-width=".9"/><path d="M8 21.5h16" stroke="#c9961e" stroke-width="2.8" stroke-linecap="round"/><path d="M16 22.5v6" stroke="#5b3a1c" stroke-width="2.8"/><circle cx="16" cy="29.5" r="1.9" fill="#c9961e"/></svg>',
+  // Bastos: garrote verde con nudos
+  B: '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M12 30.5l1.6-25c.4-4 6.4-4 6.8 0L18 30.5z" fill="#6a9a3e" stroke="#2d4719" stroke-width="1.3"/><path d="M14.3 9.5c1.4.8 2.5.8 3.8 0M14.1 15c1.4.8 2.6.8 3.9 0M13.8 21c1.5.8 2.8.8 4.2 0" stroke="#2d4719" stroke-width="1.1" fill="none"/><path d="M19.6 7l3-2.2M12.6 12.5L9.5 11" stroke="#2d4719" stroke-width="1.4" stroke-linecap="round"/><ellipse cx="22.9" cy="4.6" rx="1.6" ry="1" fill="#4f7d2c"/><ellipse cx="9.2" cy="10.8" rx="1.6" ry="1" fill="#4f7d2c"/></svg>',
 };
 function parseCard(code) { return { rank: Number(code.slice(0, -1)), suit: code.slice(-1) }; }
 function cardLabel(code) {
@@ -151,16 +155,36 @@ function suitUse(suit, x, y, scale = 1) {
   const s = 11 * scale;
   return `<svg x="${x - s / 2}" y="${y - s / 2}" width="${s}" height="${s}" viewBox="0 0 32 32">${SUIT_SVG[suit].replace(/^<svg[^>]*>|<\/svg>$/g, "")}</svg>`;
 }
+// Figuras de cuerpo entero, como en la baraja española: sota (paje de pie), caballo (jinete)
+// y rey (corona, barba y manto). Cada palo tiñe la ropa.
+const ROBE = { O: ["#c8862a", "#7a3f12"], C: ["#b8323f", "#5e1018"], E: ["#3d6ea5", "#1d3553"], B: ["#5f8a3a", "#2c4318"] };
 function figureSVG(rank, suit) {
-  const c = SUIT_COLOR[suit];
-  const crown = rank === 12 ? `<path d="M22 26l3-5 3 4 2-5 2 5 3-4 3 5z" fill="#d4a72c" stroke="#7a5a10" stroke-width=".8"/>` : "";
-  const hat = rank === 10 ? `<path d="M23 27q7-7 14 0z" fill="${c}"/>` : "";
-  const horse = rank === 11 ? `<path d="M14 70q4-12 16-12t14 6l3 8h-6l-2-4h-16l-3 4z" fill="#8a5a2b" stroke="#4a2f14" stroke-width=".8"/>` : "";
-  return `<rect x="10" y="15" width="40" height="62" rx="3" fill="#fbf6ea" stroke="${c}" stroke-width="1.2"/>
-    ${horse}${crown}${hat}
-    <circle cx="30" cy="${rank === 11 ? 33 : 32}" r="5" fill="#f1d3b0" stroke="#7a5a3a" stroke-width=".7"/>
-    <path d="M22 ${rank === 11 ? 58 : 66}l2-20h12l2 20z" fill="${c}" opacity=".85"/>
-    ${suitUse(suit, 38, 48, 1.15)}`;
+  const [robe, dark] = ROBE[suit];
+  const skin = "#f1d0ae";
+  const frame = `<rect x="14" y="11" width="32" height="68" rx="3" fill="#fbf3df" stroke="${dark}" stroke-width="1"/>`;
+  if (rank === 11) {
+    // Caballo: jinete sobre caballo, sosteniendo el palo
+    return `${frame}
+      <path d="M14 66q2-14 14-16 10-2 16 4l4 6-3 2-3-3v13h-4v-9h-12v9h-4z" fill="#9a6a3a" stroke="#4a2f14" stroke-width=".9"/>
+      <path d="M41 52q4-6 1-12l-4 2q2 5-1 9z" fill="#9a6a3a" stroke="#4a2f14" stroke-width=".9"/>
+      <circle cx="42.5" cy="45.5" r=".9" fill="#1d1612"/>
+      <path d="M23 50l3-14h10l2 14z" fill="${robe}" stroke="${dark}" stroke-width=".9"/>
+      <circle cx="31" cy="31" r="4.6" fill="${skin}" stroke="#7a5a3a" stroke-width=".6"/>
+      <path d="M26.5 29q4.5-6 9 0z" fill="${dark}"/>
+      ${suitUse(suit, 20, 38, 1.05)}`;
+  }
+  const crown = rank === 12 ? `<path d="M23.5 23l2.5-4.5 2.5 3 2.5-4.5 2.5 4.5 2.5-3 2.5 4.5z" fill="#e8b830" stroke="#8a5e0b" stroke-width=".7"/>` : `<path d="M24 25q6-7 12 0z" fill="${dark}"/><circle cx="36" cy="22" r="1.4" fill="#e8b830"/>`;
+  const beard = rank === 12 ? `<path d="M26.5 30q3.5 7 7 0z" fill="#8c8478"/>` : "";
+  const cape = rank === 12 ? `<path d="M19 72l4-34h14l4 34z" fill="${dark}" opacity=".9"/>` : "";
+  return `${frame}${cape}
+    <path d="M22 72l3-34h10l3 34z" fill="${robe}" stroke="${dark}" stroke-width=".9"/>
+    <path d="M25 46h10" stroke="#e8b830" stroke-width="1.6"/>
+    <path d="M26 72v4M34 72v4" stroke="#3a2a1a" stroke-width="2.4"/>
+    <circle cx="30" cy="30" r="5.2" fill="${skin}" stroke="#7a5a3a" stroke-width=".6"/>
+    <circle cx="28.2" cy="29.5" r=".7" fill="#1d1612"/><circle cx="31.8" cy="29.5" r=".7" fill="#1d1612"/>
+    ${crown}${beard}
+    <path d="M35 44l7-2" stroke="${skin}" stroke-width="2.2" stroke-linecap="round"/>
+    ${suitUse(suit, 43, 40, 1.1)}`;
 }
 function cardFace(code) {
   const { rank, suit } = parseCard(code);
@@ -172,8 +196,8 @@ function cardFace(code) {
        <path d="M3 6v78M57 6v78" stroke="${c}" stroke-width="1.4"/>`;
   const pip = rank <= 3 ? 1.7 : rank <= 5 ? 1.45 : 1.25;
   const body = FIGURE[rank] ? figureSVG(rank, suit) : PIP_LAYOUT[rank].map(([x, y, k]) => suitUse(suit, x, y, k ? k * 1.4 : pip)).join("");
-  const idx = `<text x="7" y="15" font-family="Georgia,serif" font-weight="700" font-size="12" fill="${c}">${rank}</text>`;
-  const idx2 = `<text x="53" y="80" font-family="Georgia,serif" font-weight="700" font-size="12" fill="${c}" text-anchor="end">${rank}</text>`;
+  const idx = `<text x="6.5" y="14" font-family="Georgia,serif" font-weight="700" font-size="12.5" fill="${c}">${rank}</text>${suitUse(suit, 10.5, 19.5, 0.62)}`;
+  const idx2 = `<g transform="rotate(180 30 45)">${idx}</g>`;
   const fig = FIGURE[rank] ? `<text x="30" y="85" font-size="5.5" text-anchor="middle" fill="#5d625b" letter-spacing=".5">${FIGURE[rank]}</text>` : "";
   return `<svg class="face" viewBox="0 0 60 90" aria-hidden="true"><rect width="60" height="90" rx="5" fill="#fffdf6"/>${frame}${body}${idx}${idx2}${fig}</svg>`;
 }
@@ -253,7 +277,7 @@ const SIGNALS = {
   veintinueve: ["Alzar un hombro", "29 de punto"], ciego: ["Cerrar los dos ojos", "ciego (nada)"],
 };
 
-// Resumen de la jugada: por qué se ha sumado cada tanto.
+// Jugadas de una mano (para explicar el conteo).
 function evalHand(codes) {
   const cards = codes.map(parseCard).map(({ rank, suit }) => ({ rank: rank === 3 ? 12 : rank === 2 ? 1 : rank, suit }));
   const counts = {};
@@ -266,41 +290,6 @@ function evalHand(codes) {
   else if (groups.length === 1) pares = `par de ${rankName[groups[0][0]]}`;
   const total = cards.reduce((t, c) => t + (c.rank >= 10 ? 10 : c.rank), 0);
   return { pares, total };
-}
-function roundSummary(obs, round) {
-  const names = obs.seats.map((s) => s.name);
-  const team = (t) => (t === obs.team ? "tu pareja" : "la pareja rival");
-  const ev = obs.history.filter((e) => e.round === round);
-  const hands = ev.find((e) => e.kind === "HandsRevealed")?.payload.hands;
-  const lines = [];
-  const winners = {};
-  ev.filter((e) => e.kind === "LanceResolved").forEach((e) => { winners[e.payload.lance] = e.payload.winner_seat; });
-  for (const e of ev.filter((x) => x.kind === "PointsAwarded")) {
-    const p = e.payload;
-    const w = winners[p.lance];
-    const who = w != null ? names[w] : team(p.team);
-    const lance = LANCE[p.lance] ?? p.lance;
-    let why;
-    switch (p.concept) {
-      case "paso": why = `${lance} en paso: 1 tanto a quien tiene la mejor ${lance.toLowerCase()} (${who}).`; break;
-      case "envite": why = `${lance}: envite de ${p.points} querido; lo gana ${who}.`; break;
-      case "negada": why = `${lance}: no quisieron el envite; 1 tanto en el acto para ${team(p.team)}.`; break;
-      case "envite_no_querido": why = `${lance}: no quisieron el reenvite; ${p.points} tantos en el acto (la apuesta anterior).`; break;
-      case "pares": {
-        const detail = hands ? [p.team, p.team + 2].map((s) => `${names[s]}: ${evalHand(hands[String(s)]).pares}`).join(", ") : "";
-        why = `Pares de ${team(p.team)} (par 1, medias 2, duples 3 por jugador): ${p.points}. ${detail}`; break;
-      }
-      case "juego": {
-        const detail = hands ? [p.team, p.team + 2].map((s) => `${names[s]}: ${evalHand(hands[String(s)]).total}`).join(", ") : "";
-        why = `Juego de ${team(p.team)} (la 31 vale 3, el resto 2 por jugador): ${p.points}. ${detail}`; break;
-      }
-      case "punto": why = `Punto: 1 tanto para ${who}.`; break;
-      default: why = `${lance}: ${p.points} (${p.concept}).`;
-    }
-    lines.push({ team: p.team, points: p.points, why });
-  }
-  const score = ev.filter((e) => e.kind === "RoundFinished").pop()?.payload.score;
-  return { lines, score, hands };
 }
 const SOUND_OF = {
   MusCut: "cut", BetPlaced: "bet", BetRaised: "bet", BetAccepted: "accept", OrdagoAccepted: "accept",
@@ -343,11 +332,18 @@ function home() {
       <div class="panel stack">
         <span class="kicker">Jugar</span><h2 class="card-title">Personalizada</h2>
         <form id="custom" class="stack">
+          <fieldset class="players-choice"><legend>Jugadores</legend>
+            <label><input type="radio" name="players" value="bot" checked> Yo con un bot contra 2 bots</label>
+            <label><input type="radio" name="players" value="pareja"> Yo y otra persona contra 2 bots</label>
+            <label><input type="radio" name="players" value="cuatro"> 4 personas</label>
+            <small class="muted">Varias personas juegan en este mismo dispositivo: al cambiar de turno se tapan las cartas.</small>
+          </fieldset>
           <div class="form-grid">
             <label class="field">Rivales<select name="rivals"><option value="sencillo">Sencillo</option><option value="medio" selected>Medio</option><option value="profesional">Profesional</option></select></label>
             <label class="field">Compañero<select name="partner"><option value="sencillo">Bot sencillo</option><option value="medio">Bot medio</option><option value="profesional">Bot profesional</option>${LOCAL ? "" : '<option value="human">Humano (invitación)</option>'}</select></label>
             <label class="field">Tantos<select name="target"><option>40</option><option>30</option><option>20</option><option>60</option></select></label>
             <label class="field">Tu nombre<input name="name" maxlength="24" value="Tú"></label>
+            <label class="field">Nombre compañero/a<input name="n2" maxlength="24" placeholder="Compañero"></label>
             <label class="field">Nombre rival 1<input name="n1" maxlength="24" placeholder="Bot 1"></label>
             <label class="field">Nombre rival 2<input name="n3" maxlength="24" placeholder="Bot 2"></label>
             <label class="field">Avatar<select name="avatar"><option>🧑</option><option>👩</option><option>👨</option><option>🧔</option><option>👩‍🎓</option><option>🧑‍🏫</option></select></label>
@@ -385,8 +381,9 @@ function home() {
     const names = {};
     if (f.get("n1")) names["1"] = f.get("n1");
     if (f.get("n3")) names["3"] = f.get("n3");
+    if (f.get("n2")) names["2"] = f.get("n2");
     startGame({
-      mode: "personalizada", rivals: f.get("rivals"), partner: f.get("partner"), target: Number(f.get("target")),
+      mode: "personalizada", players: f.get("players"), rivals: f.get("rivals"), partner: f.get("partner"), target: Number(f.get("target")),
       name: f.get("name") || "Tú", names, avatar: f.get("avatar"), seed: f.get("seed") ? Number(f.get("seed")) : null,
     });
   };
@@ -409,11 +406,11 @@ async function startGame(body, opts = {}) {
   try {
     const data = await api("/api/games", { method: "POST", body });
     current = {
-      id: data.game_id, token: data.seat_token, obs: data.observation, seen: 0,
-      help: Boolean(opts.help), discard: new Set(), amount: 2, busy: false,
+      id: data.game_id, token: data.seat_token, tokens: data.seat_tokens || {}, obs: data.observation, seen: 0,
+      help: Boolean(opts.help), discard: new Set(), amount: 2, busy: false, bubbles: {}, gestures: {},
     };
     current.seen = maxSeq(current.obs);
-    store.set("musst.current", { id: current.id, token: current.token });
+    store.set("musst.current", { id: current.id, token: current.token, tokens: current.tokens });
     play("deal");
     go("game");
   } catch (err) { toast(err.message); }
@@ -433,7 +430,110 @@ function seatPosition(seat, me) {
   return { 0: "bottom", 1: "right", 2: "top", 3: "left" }[(seat - me + 4) % 4];
 }
 
-function renderGame(bubbles = {}) {
+// ------------------------------------------------------------------ caras, voz y conteo
+// Caras dibujadas: miran hacia donde mira cada jugador y hacen los gestos oficiales de las
+// señas (FEM VIII.2) cuando las ves. Cada asiento tiene un aspecto distinto.
+const LOOKS = [
+  { skin: "#f1c9a5", hair: "#3b2a1e", style: "corto" }, { skin: "#e0ac85", hair: "#7a4a24", style: "boina" },
+  { skin: "#f5d6b8", hair: "#a8a39a", style: "calvo" }, { skin: "#c98f68", hair: "#1d1612", style: "rizado" },
+];
+const POS_VEC = { bottom: [0, 1], right: [1, 0], top: [0, -1], left: [-1, 0] };
+function faceSVG(seat, { pos, lookPos, gesture = null, team = 0, bot = true }) {
+  const L = LOOKS[seat % 4];
+  const me = POS_VEC[pos] || [0, 1];
+  const to = lookPos === "mesa" ? [0, 0] : POS_VEC[lookPos] || [0, 0];
+  let dx = to[0] - me[0], dy = to[1] - me[1];
+  const n = Math.hypot(dx, dy) || 1; dx = (dx / n) * 2.4; dy = (dy / n) * 1.8;
+  if (lookPos === "mesa") dy = 2;
+  const g = gesture;
+  const closedL = g === "treinta_y_una" || g === "ciego", closedR = g === "ciego";
+  const eye = (x, closed) => (closed ? `<path d="M${x - 4} 30q4 2 8 0" stroke="#2a1d14" stroke-width="1.6" fill="none"/>`
+    : `<ellipse cx="${x}" cy="30" rx="4" ry="3.4" fill="#fff"/><circle cx="${x + dx}" cy="${30 + dy}" r="1.9" fill="#2a1d14"/>`);
+  const browY = g === "duples" ? 21 : 24;
+  const mouth = {
+    dos_reyes: '<path d="M26 44q6 3 12 0" stroke="#7a2a2a" stroke-width="2" fill="none"/><rect x="28" y="41.5" width="8" height="2.4" rx="1" fill="#fff"/>',
+    dos_ases: '<path d="M27 43q5 3 10 0" stroke="#7a2a2a" stroke-width="1.8" fill="none"/><path d="M29.5 44h5v4a2.5 2.5 0 0 1-5 0z" fill="#e46b7a"/>',
+    medias_ases: '<path d="M27 43q5 3 10 0" stroke="#7a2a2a" stroke-width="1.8" fill="none"/><path d="M34 44h5v3.5a2.5 2.5 0 0 1-5 0z" fill="#e46b7a"/>',
+    medias: '<path d="M32 44q4 1.5 8-1" stroke="#7a2a2a" stroke-width="2" fill="none"/>',
+    medias_reyes: '<path d="M32 44q4 1.5 8-1" stroke="#7a2a2a" stroke-width="2" fill="none"/>',
+    juego: '<ellipse cx="32" cy="44" rx="3" ry="2.4" fill="#b8475a"/>',
+  }[g] || '<path d="M27 43q5 3 10 0" stroke="#7a2a2a" stroke-width="1.8" fill="none"/>';
+  const hair = {
+    corto: `<path d="M18 26q0-14 14-14t14 14q-4-7-14-7t-14 7z" fill="${L.hair}"/>`,
+    boina: `<ellipse cx="32" cy="16" rx="15" ry="5" fill="#2d2d38"/><circle cx="32" cy="11" r="1.6" fill="#2d2d38"/>`,
+    calvo: `<path d="M17 30q-1-6 3-9M47 30q1-6-3-9" stroke="${L.hair}" stroke-width="3" fill="none"/>`,
+    rizado: `<path d="M17 27q-2-15 15-15t15 15q-3-3-5-1-2-4-5-2-2-3-5-1-3-3-5 0-3-2-5 1-2-2-5 3z" fill="${L.hair}"/>`,
+  }[L.style];
+  const shL = g === "treinta" || g === "veintinueve" ? -4 : 0, shR = g === "treinta" ? -4 : 0;
+  const tilt = g === "pares" ? "rotate(-12 32 34)" : "";
+  const color = team === 0 ? "var(--team-a)" : "var(--team-b)";
+  return `<svg class="face ${g ? "gesturing" : ""}" viewBox="0 0 64 64" aria-hidden="true">
+    <path d="M6 64q2-${12 - shL / 2} 14-${14 - shL}h24q12 ${2 + shR} 14 ${14 + shR / 2}z" fill="${color}"/>
+    <g transform="${tilt}"><rect x="28" y="44" width="8" height="8" fill="${L.skin}"/>
+    <ellipse cx="32" cy="32" rx="14" ry="16" fill="${L.skin}"/>${hair}
+    <path d="M23 ${browY}h6M35 ${browY}h6" stroke="${L.hair === "#a8a39a" ? "#6b665e" : L.hair}" stroke-width="2" stroke-linecap="round"/>
+    ${eye(26, closedL)}${eye(38, closedR)}<path d="M32 32v5" stroke="#00000033" stroke-width="1.4"/>${mouth}</g>
+    ${bot ? "" : ""}</svg>`;
+}
+
+// Voz de los bots (síntesis de voz del navegador, en español).
+let voices = [];
+try { speechSynthesis.onvoiceschanged = () => { voices = speechSynthesis.getVoices(); }; voices = speechSynthesis.getVoices(); } catch { /* sin voz */ }
+function say(text, seat) {
+  if (!settings.voice || !settings.sound || typeof speechSynthesis === "undefined" || !text) return Promise.resolve();
+  return new Promise((resolve) => {
+    try {
+      const u = new SpeechSynthesisUtterance(text.replace(/[«»¡!]/g, ""));
+      const es = voices.filter((v) => v.lang && v.lang.startsWith("es"));
+      if (es.length) u.voice = es[seat % es.length];
+      u.lang = "es-ES"; u.pitch = [1, 0.8, 1.15, 0.9][seat % 4]; u.rate = 1.05 / Math.max(0.6, settings.speed);
+      u.onend = resolve; u.onerror = resolve;
+      speechSynthesis.speak(u);
+      setTimeout(resolve, 3500);
+    } catch { resolve(); }
+  });
+}
+
+// Amarracos (5 tantos) y piedras (1 tanto), como en la mesa real.
+function stonesHTML(points) {
+  const am = Math.floor(points / 5), st = points % 5;
+  return `<span class="am-row">${'<span class="am"></span>'.repeat(am)}</span><span class="st-row">${'<span class="st"></span>'.repeat(st)}</span>`;
+}
+
+// Conteo de la jugada, paso a paso, en el centro de la mesa.
+const shortRank = (code) => { const { rank } = parseCard(code); return { 1: "A", 2: "A", 3: "R", 10: "S", 11: "C", 12: "R" }[rank] ?? String(rank); };
+function buildReview(obs, round) {
+  const names = obs.seats.map((s) => s.name);
+  const ev = obs.history.filter((e) => e.round === round);
+  const hands = ev.find((e) => e.kind === "HandsRevealed")?.payload.hands;
+  if (!hands) return null;
+  const teamName = (t) => (t === obs.team ? "tu pareja" : "la pareja rival");
+  const pts = (lance) => ev.filter((e) => e.kind === "PointsAwarded" && e.payload.lance === lance);
+  const steps = [{ title: "Se enseñan las cartas", text: "Ahora se cuenta la jugada, lance a lance, en el orden del reglamento: grande, chica, pares y juego (o punto).", seats: [] }];
+  const resolved = ev.filter((e) => e.kind === "LanceResolved");
+  for (const r of resolved) {
+    const lance = r.payload.lance, w = r.payload.winner_seat, status = r.payload.status;
+    const award = pts(lance);
+    const lines = [];
+    const order = (code) => { const r = parseCard(code).rank; return r === 3 ? 12 : r === 2 ? 1 : r; };
+    const hand = (s) => [...hands[String(s)]].sort((a, b) => order(b) - order(a)).map(shortRank).join(" ");
+    if (lance === "pares") obs.seats.forEach((s) => lines.push(`${names[s.seat]}: ${evalHand(hands[String(s.seat)]).pares}`));
+    if (lance === "juego" || lance === "punto") obs.seats.forEach((s) => lines.push(`${names[s.seat]}: ${evalHand(hands[String(s.seat)]).total}${lance === "juego" && evalHand(hands[String(s.seat)]).total >= 31 ? " (juego)" : ""}`));
+    let head;
+    if (w == null) head = lance === "pares" ? "Nadie tiene pares." : "Nadie lleva este lance.";
+    else head = `Gana ${names[w]} (${hand(w)})${lance === "grande" ? ": la mejor grande, las cartas más altas" : lance === "chica" ? ": la mejor chica, las cartas más bajas" : ""}.`;
+    const how = { passed: "Se pasó.", accepted: "Hubo envite y se quiso.", rejected: "Hubo envite y no se quiso.", no_bet: "Sin envites (solo una pareja podía jugarlo).", ordago: "Órdago." }[status] || "";
+    const points = award.map((a) => `+${a.payload.points} para ${teamName(a.payload.team)} (${{ paso: "en paso", envite: "envite querido", negada: "no quisieron: en el acto", envite_no_querido: "reenvite no querido: en el acto", pares: "sus pares", juego: "su juego", punto: "el punto" }[a.payload.concept] ?? a.payload.concept})`);
+    steps.push({ title: LANCE[lance], text: [head, how, ...lines].filter(Boolean).join(" · "), points, seats: w == null ? [] : (lance === "grande" || lance === "chica" || lance === "punto" ? [w] : [w, (w + 2) % 4]) });
+  }
+  const mine = ev.filter((e) => e.kind === "PointsAwarded" && e.payload.team === obs.team).reduce((t, e) => t + e.payload.points, 0);
+  const theirs = ev.filter((e) => e.kind === "PointsAwarded" && e.payload.team !== obs.team).reduce((t, e) => t + e.payload.points, 0);
+  const score = ev.filter((e) => e.kind === "RoundFinished").pop()?.payload.score || obs.score;
+  steps.push({ title: "Total de la jugada", text: `Tu pareja +${mine} · rivales +${theirs}. Marcador: ${score[obs.team]} – ${score[1 - obs.team]} (se gana a ${obs.target}).`, seats: [], last: true });
+  return { round, hands, steps };
+}
+
+function renderGame(bubbles = current?.bubbles || {}) {
   if (!current) { go("home"); return; }
   const obs = current.obs;
   const me = obs.seat;
@@ -448,59 +548,84 @@ function renderGame(bubbles = {}) {
   }).join("");
   const phaseName = { mus: "Mus", discard: "Descarte", game_over: "Fin" }[obs.phase] ?? LANCE[obs.phase];
   const myTeam = obs.team;
-  const teamLabel = (t) => (obs.seats.some((s) => s.team === t && s.kind === "human") ? (t === myTeam ? "Tu pareja" : "Pareja rival") : t === myTeam ? "Tu pareja" : "Pareja bots");
+  const humanTeam = (t) => obs.seats.filter((s) => s.team === t).every((s) => s.kind === "human");
+  const teamLabel = (t) => (t === myTeam ? "Tu pareja" : humanTeam(t) ? "Pareja rival" : "Pareja bots");
+  // Conteo paso a paso antes de repartir la jugada siguiente
+  if (obs.awaiting_deal && obs.round > 1 && (!current.review || current.review.round !== obs.round - 1)) {
+    const r = buildReview(obs, obs.round - 1);
+    current.review = r ? { ...r, step: 0 } : { round: obs.round - 1, steps: [], step: 0, done: true };
+  }
+  const review = obs.awaiting_deal && current.review && !current.review.done && current.review.steps.length ? current.review : null;
+  const step = review ? review.steps[review.step] : null;
   const scoreLine = (t) => {
     const pts = obs.score[t];
-    const am = Math.floor(pts / 5), st = pts % 5;
     const left = obs.target - pts;
     return `<div class="score-line"><span class="team-dot" style="background:var(${t === 0 ? "--team-a" : "--team-b"})"></span>
-      <span>${teamLabel(t)}${t === myTeam ? " (" + (t === 0 ? "A" : "B") + ")" : ""}</span>
-      <span class="amarracos" aria-hidden="true">${'<span class="amarraco"></span>'.repeat(am)}${'<span class="piedra"></span>'.repeat(st)}</span>
-      ${left > 0 && left <= 4 ? '<span class="dentro">dentro</span>' : ""}
+      <span>${teamLabel(t)}</span>${left > 0 && left <= 4 ? '<span class="dentro">dentro</span>' : ""}
       <strong aria-label="${pts} tantos">${pts}</strong></div>`;
   };
+  const tableScore = (t, where) => `<div class="table-score ${where}" aria-label="${teamLabel(t)}: ${obs.score[t]} tantos">
+      <small>${teamLabel(t)}</small><div class="stones">${stonesHTML(obs.score[t])}</div><strong>${obs.score[t]}</strong></div>`;
   const seatHTML = (s) => {
     const pos = seatPosition(s.seat, me);
     const decl = (k) => (obs.declarations[k] && obs.declarations[k][String(s.seat)] !== undefined
       ? `<span class="chip ${obs.declarations[k][String(s.seat)] ? "si" : "no"}">${k === "pares" ? "Pares" : "Juego"}: ${obs.declarations[k][String(s.seat)] ? "sí ✔" : "no ✘"}</span>` : "");
-    const revealed = obs.revealed_hands && obs.revealed_hands[String(s.seat)];
-    const cards = s.seat === me ? "" : revealed
-      ? `<div class="hand">${revealed.map((c) => cardHTML(c, { small: true })).join("")}</div>`
+    const shown = review ? review.hands[String(s.seat)] : obs.revealed_hands && obs.revealed_hands[String(s.seat)];
+    const lit = step && step.seats.includes(s.seat);
+    const cards = s.seat === me && !review ? "" : shown
+      ? `<div class="hand ${lit ? "lit" : ""}">${shown.map((c) => cardHTML(c, { small: true })).join("")}</div>`
       : `<div class="backs" role="img" aria-label="4 cartas ocultas">${'<span class="back"></span>'.repeat(4)}</div>`;
-    const avatar = s.kind === "bot" ? "🤖" : esc(s.avatar || "🧑");
-    const bubble = bubbles[s.seat] ? `<span class="bubble ${bubbles[s.seat] === "ÓRDAGO" ? "ordago" : ""}">${bubbles[s.seat]}</span>` : "";
+    const bubble = bubbles[s.seat] ? `<span class="bubble ${/ÓRDAGO/i.test(bubbles[s.seat]) ? "ordago" : ""}">${esc(bubbles[s.seat])}</span>` : "";
     const status = s.waiting ? '<span class="chip">esperando…</span>' : !s.connected ? '<span class="chip">desconectado</span>' : "";
     const target = obs.gazes && obs.gazes.length ? obs.gazes[s.seat] : undefined;
     const lookPos = target == null ? "mesa" : seatPosition(target, me);
-    const gaze = target === undefined ? "" : `<span class="chip gaze ${target === me && s.seat !== me ? "on-me" : ""}" title="Hacia dónde mira">👀 ${target == null ? "la mesa" : target === me ? (s.seat === me ? "" : "te mira") : esc(names[target])}</span>`;
-    return `<div class="seat ${pos} ${obs.turn === s.seat && !obs.awaiting_deal ? "turn" : ""}" style="--team-color:var(${s.team === 0 ? "--team-a" : "--team-b"})">
-      ${bubble}<div class="avatar look-${pos}-${lookPos}" aria-hidden="true">${avatar}</div>
+    const gaze = target === undefined ? "" : `<span class="chip gaze ${target === me && s.seat !== me ? "on-me" : ""}">👀 ${target == null ? "la mesa" : target === me ? (s.seat === me ? "" : "te mira") : esc(names[target])}</span>`;
+    const face = faceSVG(s.seat, { pos, lookPos, gesture: current.gestures?.[s.seat], team: s.team, bot: s.kind === "bot" });
+    const canLook = obs.gazes && obs.gazes.length && s.seat !== me && !obs.finished;
+    const avatar = canLook
+      ? `<button class="avatar face-btn ${obs.gazes[me] === s.seat ? "watched" : ""}" data-look="${s.seat}" aria-label="Mirar a ${esc(s.name)}" title="Mirar a ${esc(s.name)}">${face}</button>`
+      : `<div class="avatar" aria-hidden="true">${face}</div>`;
+    return `<div class="seat ${pos} ${obs.turn === s.seat && !obs.awaiting_deal ? "turn" : ""} ${lit ? "lit" : ""}" style="--team-color:var(${s.team === 0 ? "--team-a" : "--team-b"})">
+      ${bubble}${avatar}
       <div class="seat-name">${esc(s.name)}${s.seat === me ? " (tú)" : ""}${s.level ? ` <span class="chip">${esc(s.level)}</span>` : ""}</div>
       <div class="seat-meta"><span class="chip">${s.team === 0 ? "◆ Pareja A" : "● Pareja B"}</span>${obs.mano === s.seat ? '<span class="chip mano">mano</span>' : ""}${decl("pares")}${decl("juego")}${status}${gaze}</div>
-      ${pos === "bottom" ? "" : cards}</div>`;
+      ${pos === "bottom" && !review ? "" : cards}</div>`;
   };
   const bet = obs.current_bet;
   const betInfo = bet ? (bet.is_ordago ? `Órdago de la pareja ${bet.bettor_team === 0 ? "A" : "B"}` : `En juego: ${bet.stake} tantos`) : "";
   const finished = obs.finished;
-  const myTurn = obs.turn === me && !finished && !obs.awaiting_deal;
+  const handoff = current.handoff;
+  const myTurn = obs.turn === me && !finished && !obs.awaiting_deal && handoff == null;
   const dealerPos = seatPosition(obs.dealer, me);
   const deck = `<div class="deck deck-${dealerPos}" aria-label="Baraja, a la derecha de ${esc(names[obs.dealer])} (reparte)" role="img">
     ${'<span class="back"></span>'.repeat(4)}<small>Reparte ${esc(names[obs.dealer])}</small></div>`;
-  const prev = obs.awaiting_deal && obs.round > 1 ? roundSummary(obs, obs.round - 1) : null;
-  const dealPanel = obs.awaiting_deal ? `<div class="deal-panel panel stack" role="region" aria-label="Antes de repartir">
-      ${prev ? `<h2 class="card-title">Resumen de la jugada ${obs.round - 1}</h2>
-        <ul class="round-points">${prev.lines.map((l) => `<li class="${l.team === myTeam ? "mine" : "theirs"}"><strong>+${l.points}</strong> ${esc(l.why)}</li>`).join("") || "<li>Nadie sumó tantos.</li>"}</ul>
-        ${prev.hands ? `<div class="shown-hands">${obs.seats.map((s) => `<div><small>${esc(s.name)}</small><div class="hand">${prev.hands[String(s.seat)].map((c) => cardHTML(c, { small: true })).join("")}</div></div>`).join("")}</div>` : ""}
-        ${prev.score ? `<p><strong>Marcador:</strong> tu pareja ${prev.score[myTeam]} – ${prev.score[1 - myTeam]} rivales (se gana a ${obs.target}).</p>` : ""}` : ""}
-      <p>${obs.dealer === me ? "Te toca repartir." : `Reparte ${esc(names[obs.dealer])}; la baraja está a su derecha.`} Es mano ${esc(names[obs.mano])}.</p>
-      <button class="btn primary" id="deal-btn">${obs.dealer === me ? "Repartir" : "¿Repartimos? Sí"}</button></div>` : "";
+  let center;
+  if (review) {
+    center = `<div class="review" role="region" aria-label="Conteo de la jugada ${review.round}">
+      <small>Conteo de la jugada ${review.round} · ${review.step + 1}/${review.steps.length}</small>
+      <div class="lance-title">${esc(step.title)}</div><p>${esc(step.text)}</p>
+      ${step.points?.length ? `<ul>${step.points.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : step.last ? "" : '<p class="muted">Sin tantos en este lance.</p>'}
+      <div class="row">${review.step > 0 ? '<button class="btn small-btn" id="rev-prev">◀ Anterior</button>' : ""}
+        ${step.last ? `<button class="btn primary" id="deal-btn">${obs.dealer === me ? "Repartir" : "¿Repartimos? Sí"}</button>` : '<button class="btn primary" id="rev-next">Siguiente ▶</button>'}</div></div>`;
+  } else if (obs.awaiting_deal) {
+    center = `<div><div class="lance-title">Reparto</div><p>${obs.dealer === me ? "Te toca repartir." : `Reparte ${esc(names[obs.dealer])}; la baraja está a su derecha.`} Es mano ${esc(names[obs.mano])}.</p>
+      <button class="btn primary" id="deal-btn">${obs.dealer === me ? "Repartir" : "¿Repartimos? Sí"}</button></div>`;
+  } else {
+    center = `<div><div class="lance-title">${esc(phaseName)}</div><div class="bet-info">${esc(betInfo)}</div>
+      <div class="bet-info">${finished ? (obs.winner === myTeam ? "¡Habéis ganado!" : "Ha ganado la pareja rival") : myTurn ? "Te toca" : `Habla ${esc(names[obs.turn] ?? "")}`}</div></div>`;
+  }
   const watching = (obs.gazes || []).map((g, s) => (g === me && s !== me ? s : null)).filter((s) => s != null);
   const seen = Object.entries(obs.signals_seen || {}).filter(([s]) => Number(s) !== me);
-  const signalPanel = (obs.available_signals || []).length || seen.length ? `<div class="signals panel" role="region" aria-label="Señas">
+  const myLook = obs.gazes && obs.gazes.length ? obs.gazes[me] : undefined;
+  const signalPanel = obs.gazes && obs.gazes.length && !finished && !handoff ? `<div class="signals panel" role="region" aria-label="Miradas y señas">
+      <p class="muted">${myLook == null ? "Miras a la mesa." : `Miras a ${esc(names[myLook])}.`} Pulsa la cara de un jugador para mirarle: solo verás sus señas si le estás mirando.</p>
       ${seen.length ? `<p class="seen">${seen.map(([s, list]) => `<strong>${esc(names[s])}</strong> ${Number(s) === obs.partner ? "(compañero)" : "(rival)"} ha hecho seña: ${list.map((x) => esc(SIGNALS[x]?.[1] ?? x)).join(", ")}`).join("<br>")}</p>` : ""}
-      ${(obs.available_signals || []).length ? `<p class="muted">Seña (solo la verán quienes te miren ahora): ${watching.length ? watching.map((s) => `${esc(names[s])}${s === obs.partner ? " ✔" : " ⚠ rival"}`).join(", ") : "nadie te mira"}</p>
+      ${(obs.available_signals || []).length ? `<p class="muted">Tu seña la verán quienes te miren ahora: ${watching.length ? watching.map((s) => `${esc(names[s])}${s === obs.partner ? " ✔" : " ⚠ rival"}`).join(", ") : "nadie te mira"}</p>
         <div class="row">${obs.available_signals.map((x) => `<button class="btn small-btn" data-signal="${x}" title="${esc(SIGNALS[x]?.[0] ?? "")}">${esc(SIGNALS[x]?.[0] ?? x)} · <em>${esc(SIGNALS[x]?.[1] ?? "")}</em></button>`).join("")}</div>` : ""}
     </div>` : "";
+  const curtain = handoff != null ? `<div class="curtain panel stack" role="dialog" aria-label="Cambio de jugador">
+      <h2 class="card-title">Turno de ${esc(names[handoff])}</h2><p>Pasa el dispositivo a ${esc(names[handoff])}. Las cartas están tapadas.</p>
+      <button class="btn primary" id="handoff-btn">Soy ${esc(names[handoff])}: ver mis cartas</button></div>` : "";
   $main.innerHTML = "";
   $main.append(h(`
   <div class="game">
@@ -510,15 +635,15 @@ function renderGame(bubbles = {}) {
       <div class="scores">${scoreLine(myTeam)}${scoreLine(1 - myTeam)}</div>
     </div>
     ${obs.invite ? `<div class="invite">Invita a tu compañero: comparte este enlace <code>${location.origin}${location.pathname}#join/${obs.game_id}/${obs.invite}</code></div>` : ""}
-    <div class="table" role="region" aria-label="Mesa de Mus">
+    <div class="table ${review ? "reviewing" : ""}" role="region" aria-label="Mesa de Mus">
       ${obs.seats.filter((s) => s.seat !== me).map(seatHTML).join("")}
-      <div class="center"><div><div class="lance-title">${obs.awaiting_deal ? "Reparto" : esc(phaseName)}</div><div class="bet-info">${esc(betInfo)}</div>
-        <div class="bet-info">${finished ? (obs.winner === myTeam ? "¡Habéis ganado!" : "Ha ganado la pareja rival") : obs.awaiting_deal ? "Esperando para repartir" : myTurn ? "Te toca" : `Habla ${esc(names[obs.turn] ?? "")}`}</div></div></div>
+      <div class="center">${center}</div>
       ${seatHTML(obs.seats[me])}
+      ${tableScore(myTeam, "mine")}${tableScore(1 - myTeam, "theirs")}
       ${finished ? "" : deck}
     </div>
-    ${dealPanel}
-    <div class="hand" id="my-hand" aria-label="Tus cartas">${obs.hand.map((c) => cardHTML(c, { button: obs.phase === "discard" && myTurn, pressed: current.discard.has(c) })).join("")}</div>
+    ${curtain}
+    ${handoff != null || review ? "" : `<div class="hand" id="my-hand" aria-label="Tus cartas">${obs.hand.map((c) => cardHTML(c, { button: obs.phase === "discard" && myTurn, pressed: current.discard.has(c) })).join("")}</div>`}
     <div class="status-line" id="status"></div>
     <div class="actions" id="actions" role="group" aria-label="Acciones disponibles"></div>
     ${signalPanel}
@@ -530,7 +655,11 @@ function renderGame(bubbles = {}) {
     <div id="help" class="help-panel" ${current.help ? "" : "hidden"}></div>
   </div>`));
   renderActions();
-  document.getElementById("deal-btn")?.addEventListener("click", dealCards);
+  document.getElementById("deal-btn")?.addEventListener("click", () => { if (current.review) current.review.done = true; dealCards(); });
+  document.getElementById("rev-next")?.addEventListener("click", () => { current.review.step += 1; renderGame(); });
+  document.getElementById("rev-prev")?.addEventListener("click", () => { current.review.step -= 1; renderGame(); });
+  document.getElementById("handoff-btn")?.addEventListener("click", () => switchViewer(handoff));
+  document.querySelectorAll("[data-look]").forEach((b) => (b.onclick = () => lookAt(Number(b.dataset.look))));
   document.querySelectorAll("[data-signal]").forEach((b) => (b.onclick = () => makeSignal(b.dataset.signal)));
   scheduleTick();
   document.getElementById("help-btn").onclick = () => { current.help = !current.help; renderGame(); };
@@ -551,7 +680,7 @@ function renderActions() {
   const $a = document.getElementById("actions");
   if (!$a) return;
   $a.innerHTML = "";
-  if (obs.finished || obs.turn !== obs.seat || obs.awaiting_deal) return;
+  if (obs.finished || obs.turn !== obs.seat || obs.awaiting_deal || current.handoff != null) return;
   const specs = Object.fromEntries(obs.legal_actions.map((s) => [s.type, s]));
   const add = (label, cls, action, key) => {
     const b = document.createElement("button");
@@ -618,44 +747,94 @@ async function send(action) {
 }
 
 async function animateTo(obs) {
-  const names = obs.seats.map((s) => s.name);
-  const fresh = obs.history.filter((e) => e.seq > current.seen);
-  const prevRound = current.obs.round;
-  for (const e of fresh) {
-    const bubble = BUBBLE[e.kind];
-    if (SOUND_OF[e.kind]) play(SOUND_OF[e.kind]);
-    const text = eventText(e, names);
-    if (text) announce(text);
-    if (bubble && e.round === prevRound && e.actor !== obs.seat) {
-      setStatus(text);
-      renderGame({ [e.actor]: talk(e) });
-      await sleep(e.kind === "PairsDeclared" || e.kind === "GameDeclared" ? 700 : 1300);
-    } else if (e.kind === "HandsRevealed" && e.round === prevRound) {
-      setStatus("Se enseñan las cartas");
-      current.obs = { ...current.obs, revealed_hands: e.payload.hands };
-      renderGame();
-      await sleep(1800);
-    } else if (e.kind === "SignalSeen" || (e.kind === "SignalMade" && e.actor !== obs.seat)) {
-      const from = e.payload.seat;
-      toast(`👁 Has visto a ${names[from]} ${SIGNALS[e.payload.signal]?.[0]?.toLowerCase() ?? "hacer una seña"}: ${SIGNALS[e.payload.signal]?.[1] ?? ""}`);
-    } else if (e.kind === "RoundFinished" && e.round === prevRound) {
-      const lastPts = obs.history.filter((x) => x.round === prevRound && x.kind === "PointsAwarded");
-      const mine = lastPts.filter((x) => x.payload.team === obs.team).reduce((t, x) => t + x.payload.points, 0);
-      const theirs = lastPts.filter((x) => x.payload.team !== obs.team).reduce((t, x) => t + x.payload.points, 0);
-      const bot = obs.seats.find((s) => s.kind === "bot" && s.team !== obs.team) || obs.seats.find((s) => s.kind === "bot");
-      if (bot) {
-        const pool = (bot.team === obs.team ? mine >= theirs : theirs > mine) ? BANTER_WIN : BANTER_LOSE;
-        renderGame({ [bot.seat]: pool[e.seq % pool.length] });
-        await sleep(1200);
+  if (current.animating) { current.pendingObs = obs; return; }
+  current.animating = true;
+  try {
+    const names = obs.seats.map((s) => s.name);
+    const fresh = obs.history.filter((e) => e.seq > current.seen);
+    const prevRound = current.obs.round;
+    current.bubbles = current.bubbles || {};
+    for (const e of fresh) {
+      const bubble = BUBBLE[e.kind];
+      if (SOUND_OF[e.kind]) play(SOUND_OF[e.kind]);
+      const text = eventText(e, names);
+      if (text) announce(text);
+      if (e.kind === "LanceStarted" || e.kind === "DealerAssigned") current.bubbles = {};
+      const human = obs.seats[e.actor]?.kind === "human";
+      if (bubble && e.round === prevRound && e.actor !== obs.seat) {
+        // Lo que dice cada jugador se queda en su bocadillo hasta el siguiente lance.
+        const phrase = human ? BUBBLE[e.kind] : talk(e);
+        current.bubbles = { ...current.bubbles, [e.actor]: phrase };
+        setStatus(text);
+        renderGame();
+        const pause = e.kind === "PairsDeclared" || e.kind === "GameDeclared" ? 650 : 1200;
+        await Promise.all([human ? null : say(phrase, e.actor), sleep(pause)]);
+      } else if (e.kind === "HandsRevealed" && e.round === prevRound) {
+        setStatus("Se enseñan las cartas");
+        current.obs = { ...current.obs, revealed_hands: e.payload.hands };
+        renderGame();
+        await sleep(1500);
+      } else if (e.kind === "SignalSeen" || (e.kind === "SignalMade" && e.actor !== obs.seat)) {
+        // La seña se ve en su cara: el gesto oficial durante unos segundos.
+        const from = e.payload.seat;
+        current.gestures = { ...(current.gestures || {}), [from]: e.payload.signal };
+        renderGame();
+        toast(`👁 ${names[from]} ${SIGNALS[e.payload.signal]?.[0]?.toLowerCase() ?? "hace una seña"}: ${SIGNALS[e.payload.signal]?.[1] ?? ""}`);
+        await sleep(1800);
+        delete current.gestures[from];
+      } else if (e.kind === "SignalMade" && e.actor === obs.seat) {
+        current.gestures = { ...(current.gestures || {}), [obs.seat]: e.payload.signal };
+        setTimeout(() => { delete current.gestures[obs.seat]; }, 1800);
+      } else if (e.kind === "RoundFinished" && e.round === prevRound) {
+        const lastPts = obs.history.filter((x) => x.round === prevRound && x.kind === "PointsAwarded");
+        const mine = lastPts.filter((x) => x.payload.team === obs.team).reduce((t, x) => t + x.payload.points, 0);
+        const theirs = lastPts.filter((x) => x.payload.team !== obs.team).reduce((t, x) => t + x.payload.points, 0);
+        const bot = obs.seats.find((s) => s.kind === "bot" && s.team !== obs.team) || obs.seats.find((s) => s.kind === "bot");
+        if (bot) {
+          const pool = (bot.team === obs.team ? mine >= theirs : theirs > mine) ? BANTER_WIN : BANTER_LOSE;
+          const phrase = pool[e.seq % pool.length];
+          current.bubbles = { [bot.seat]: phrase };
+          renderGame();
+          await Promise.all([say(phrase, bot.seat), sleep(1200)]);
+        }
+        current.bubbles = {};
       }
     }
+    current.seen = maxSeq(obs);
+    current.obs = obs;
+    checkHandoff();
+    renderGame();
+    if (obs.finished) { store.set("musst.current", null); setTimeout(showSummary, 600); syncFinishedGame(obs.game_id); }
+  } finally {
+    current.animating = false;
   }
-  current.seen = maxSeq(obs);
-  current.obs = obs;
-  renderGame();
-  const last = fresh.filter((e) => e.kind === "RoundFinished").pop();
-  if (last) setStatus(`Fin de la jugada: ${last.payload.score[0]} – ${last.payload.score[1]}`);
-  if (obs.finished) { store.set("musst.current", null); setTimeout(showSummary, 600); syncFinishedGame(obs.game_id); }
+  if (current.pendingObs) { const next = current.pendingObs; current.pendingObs = null; await animateTo(next); }
+}
+
+// Varias personas en el mismo dispositivo: al tocarle a otra persona se tapan las cartas.
+function checkHandoff() {
+  const obs = current.obs;
+  const tokens = current.tokens || {};
+  const t = obs.turn;
+  current.handoff = !obs.finished && !obs.awaiting_deal && t != null && t !== obs.seat && tokens[String(t)] ? t : null;
+}
+async function switchViewer(seat) {
+  const token = current.tokens?.[String(seat)];
+  if (!token) return;
+  try {
+    const obs = await api(`/api/games/${current.id}`, { token });
+    current.token = token; current.obs = obs; current.seen = maxSeq(obs); current.handoff = null;
+    current.discard = new Set(); current.bubbles = {};
+    store.set("musst.current", { id: current.id, token, tokens: current.tokens });
+    renderGame();
+  } catch (err) { toast(err.message); }
+}
+async function lookAt(seat) {
+  try {
+    const target = current.obs.gazes[current.obs.seat] === seat ? null : seat;
+    const obs = await api(`/api/games/${current.id}/look`, { method: "POST", body: { target }, token: current.token });
+    await animateTo(obs);
+  } catch (err) { toast(err.message); }
 }
 // Reparto: se pregunta antes y se ve cómo van saliendo las cartas de la baraja, de una en
 // una y en sentido antihorario empezando por el mano (FEM III.2).
@@ -717,10 +896,11 @@ function scheduleTick() {
   const obs = current?.obs;
   if (!obs || obs.finished || obs.awaiting_deal || !obs.gazes || !obs.gazes.length) return;
   tickTimer = setTimeout(async () => {
-    if (!current || current.busy || !document.querySelector(".game")) return;
+    if (!current || !document.querySelector(".game")) return;
+    if (current.busy || current.animating || current.handoff != null) { scheduleTick(); return; }
     try {
       const fresh = await api(`/api/games/${current.id}/tick`, { method: "POST", token: current.token });
-      if (!current.busy) await animateTo(fresh);
+      if (!current.busy) await animateTo(fresh); else scheduleTick();
     } catch { scheduleTick(); }
   }, 2200 * settings.speed);
 }
@@ -1012,12 +1192,13 @@ function settingsView() {
       <label class="field">Reverso de cartas<select name="card_back">${opt("b", [["rayas", "Clásico"], ["liso", "Liso"], ["escudo", "Escudo"]], settings.card_back)}</select></label>
       <label class="field"><span><input type="checkbox" name="reduce_motion" ${settings.reduce_motion ? "checked" : ""}> Reducir animaciones</span></label>
       <label class="field"><span><input type="checkbox" name="sound" ${settings.sound ? "checked" : ""}> Efectos de sonido</span></label>
+      <label class="field"><span><input type="checkbox" name="voice" ${settings.voice ? "checked" : ""}> Voz de los bots</span></label>
     </form></div></div>`));
   document.getElementById("sf").onchange = (e) => {
     const f = new FormData(e.currentTarget);
     settings = {
       ...settings, theme: f.get("theme"), text_size: Number(f.get("text_size")), speed: Number(f.get("speed")),
-      table: f.get("table"), card_back: f.get("card_back"), reduce_motion: f.get("reduce_motion") === "on", sound: f.get("sound") === "on",
+      table: f.get("table"), card_back: f.get("card_back"), reduce_motion: f.get("reduce_motion") === "on", sound: f.get("sound") === "on", voice: f.get("voice") === "on",
     };
     saveSettings();
   };

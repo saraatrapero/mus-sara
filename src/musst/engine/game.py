@@ -367,6 +367,24 @@ class MusGame:
                 self.gaze[seat] = target
                 self._emit(EventKind.GAZE_CHANGED, seat, {"seat": seat, "target": target})
 
+    def look(self, seat: int, target: int | None) -> list[GameEvent]:
+        """Un jugador decide a quién mira (a otro asiento o a la mesa, ``None``).
+
+        La mirada dura lo máximo (``gaze_max_ticks``) y después vuelve a ser espontánea. Sirve
+        para que una persona pueda vigilar a su compañero esperando una seña."""
+        if not self.config.signals_enabled or self.phase is Phase.GAME_OVER:
+            raise IllegalAction("Las miradas solo existen con señas activadas")
+        if not 0 <= seat < NUM_SEATS or (target is not None and not 0 <= target < NUM_SEATS):
+            raise IllegalAction("Asiento inválido")
+        if target == seat:
+            raise IllegalAction("No puedes mirarte a ti mismo")
+        start = len(self.events)
+        self.gaze_timer[seat] = self.config.gaze_max_ticks
+        if self.gaze[seat] != target:
+            self.gaze[seat] = target
+            self._emit(EventKind.GAZE_CHANGED, seat, {"seat": seat, "target": target})
+        return self.events[start:]
+
     def legal_signals(self, seat: int) -> list[Signal]:
         """Señas que ``seat`` puede hacer ahora: verdaderas (FEM VIII.4), tras cortar el mus,
         y cada una una sola vez por jugada."""
