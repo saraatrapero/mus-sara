@@ -7,8 +7,22 @@ Diseño completo: [design/06-agentes.md](design/06-agentes.md). Código: `src/mu
 | Nivel | Clase | Técnica |
 |---|---|---|
 | Sencillo | `SimpleBot` | Heurísticas de fuerza de mano por lance; ruido del 15 % y faroles ocasionales (errores razonables) |
-| Medio | `AgentBot("medio")` | Agentes de cartas, probabilidad (Monte Carlo, 150 muestras) y marcador |
+| Medio | `AgentBot("medio")` | Agentes de cartas, probabilidad (Monte Carlo, 90 muestras) y marcador |
 | Profesional | `AgentBot("profesional")` | Todos los agentes + PlayerModel con memoria + farol + pareja (300-800 muestras) |
+
+### Qué hace cada nivel (diferencias claras)
+
+| | Sencillo | Medio | Profesional |
+|---|---|---|---|
+| Fuerza de su mano | Heurística | Monte Carlo (90 manos) | Monte Carlo (300; 800 en jugadas críticas) |
+| Lee los envites del rival | No | Solo en el lance actual | Sí, ponderado por lo que sabe de cada rival |
+| Conoce a cada jugador (PlayerModel) | No | No | Sí: farol, agresividad, qué envida con buena y mala mano |
+| Conteo (cartas pedidas, descartes) | No | No | Sí |
+| Tantos de jugada de la pareja (pares/juego) | No | Solo los suyos | Los de toda la pareja |
+| Descarte | Heurístico | Heurístico | Simulado (30 reposiciones por opción) |
+| Errores deliberados | 15 % | 12 % en decisiones ajustadas | Ninguno |
+| Señas | Si le mira cualquiera | Si le mira su compañero | Solo si le mira su compañero y ningún rival |
+| Aprende entre partidas | No | No | Sí: perfiles y autocrítica |
 
 ## Agentes
 

@@ -7,7 +7,13 @@ from collections.abc import Sequence
 
 from musst.agents.base import AgentContext, Decision, ScoredAction
 from musst.agents.specialists import current_lance_bets
-from musst.bots.toolkit import discard_options, hand_strength, sample_world, unseen_cards
+from musst.bots.toolkit import (
+    discard_options,
+    hand_strength,
+    keep_heuristic_discard,
+    sample_world,
+    unseen_cards,
+)
 from musst.engine.actions import (
     AcceptAction,
     AcceptNoLoseAction,
@@ -164,7 +170,14 @@ class StrategyAgent:
         return 1 - (1 - values[0]) * (1 - values[1])
 
     def _play_bonus(self, ctx: AgentContext) -> float:
-        """Tantos de la propia jugada que se cobran si se gana el lance (pares/juego)."""
+        """Tantos de jugada que se cobran si se gana el lance (pares/juego/punto).
+
+        Con ``team_bonus`` se usa la estimación del agente de probabilidad para toda la pareja
+        (la jugada del compañero también cobra); si no, solo la propia mano."""
+        if ctx.config.get("team_bonus") and "probabilidad" in ctx.reports:
+            est = ctx.reports["probabilidad"].estimates.get("team_bonus")
+            if est is not None:
+                return est.value
         hand = ctx.obs.hand
         if ctx.lance == "pares":
             return float(int(pairs(hand).kind))
@@ -241,6 +254,8 @@ class MusPlanner:
 
     def discard(self, ctx: AgentContext) -> Action:
         hand = ctx.obs.hand
+        if self.draws <= 0:
+            return DiscardAction(keep_heuristic_discard(hand))
         pool = unseen_cards(ctx.obs)
         best: tuple[float, tuple[Card, ...]] | None = None
         rng: random.Random = ctx.rng
