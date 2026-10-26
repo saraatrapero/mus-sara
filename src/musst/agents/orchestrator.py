@@ -57,20 +57,36 @@ class LevelConfig:
     con que le mire el compañero."""
     self_review: bool = False
     """Revisa sus decisiones al acabar cada partida y corrige sus estimaciones."""
+    read_bets: bool = True
+    """Lee los envites del rival en el lance actual."""
+    read_all: bool = False
+    """Lee toda la jugada: pasos, envites, aceptaciones y rechazos de los otros tres, en todos
+    los lances (quien pasa en grande suele llevar la grande floja; si mi compañero envida, mi
+    pareja es más fuerte)."""
+    team_bonus: bool = False
+    """Cuenta los tantos de la jugada de toda la pareja (pares/juego), no solo los propios."""
+    discard_draws: int = 10
+    """Reposiciones simuladas por cada descarte posible (0 = descarte heurístico clásico)."""
     extra: dict[str, Any] = field(default_factory=dict)
 
 
 LEVELS: dict[str, LevelConfig] = {
+    # Medio: calcula con sus cartas y lee el envite del lance actual, pero no conoce a los
+    # rivales, simula pocas manos, descarta "de manual" y comete algún error.
     "medio": LevelConfig(
         "medio",
         ("cartas", "probabilidad", "marcador"),
-        samples=150,
-        samples_deep=300,
+        samples=90,
+        samples_deep=90,
         risk_aversion=0.35,
-        noise=0.05,
+        noise=0.12,
         learn=False,
         signal_policy="descuidado",
+        discard_draws=0,
     ),
+    # Profesional: todos los agentes, más simulaciones, análisis profundo en jugadas críticas,
+    # modelo de cada rival, conteo, jugada de toda la pareja, descarte simulado, señas
+    # cuidadosas y autocrítica entre partidas.
     "profesional": LevelConfig(
         "profesional",
         ("cartas", "conteo", "comportamiento", "probabilidad", "farol", "marcador", "pareja"),
@@ -80,6 +96,8 @@ LEVELS: dict[str, LevelConfig] = {
         noise=0.0,
         learn=True,
         self_review=True,
+        team_bonus=True,
+        discard_draws=30,
     ),
 }
 
@@ -102,7 +120,7 @@ class Orchestrator:
         self.agents = {name: AGENT_FACTORIES[name]() for name in level.agents}
         self.strategy = StrategyAgent()
         self.judge = Judge(level.risk_aversion, level.noise)
-        self.planner = MusPlanner(level.cut_threshold)
+        self.planner = MusPlanner(level.cut_threshold, level.discard_draws)
 
     def needs_deep_analysis(self, obs: Observation) -> bool:
         bet = obs.current_bet
@@ -189,6 +207,9 @@ class AgentBot(Bot):
                 "samples": self.level.samples,
                 "samples_deep": self.level.samples_deep,
                 "self_review": self.review_memory(),
+                "read_bets": self.level.read_bets,
+                "read_all": self.level.read_all,
+                "team_bonus": self.level.team_bonus,
             },
             self.learner,
             self.player_ids,
