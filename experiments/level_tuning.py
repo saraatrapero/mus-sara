@@ -23,6 +23,11 @@ CONFIGS: dict[str, LevelConfig] = {
     "pro+ambos": replace(PRO, team_bonus=True, discard_draws=30),
     "pro+lectura": replace(PRO, read_all=True),
     "pro+todo": replace(PRO, read_all=True, team_bonus=True, discard_draws=30),
+    "pro_farol12": replace(PRO, bluff_rate=0.12),
+    "pro_ordago70": replace(PRO, ordago_sure=0.7),
+    "pro_ambos": replace(PRO, bluff_rate=0.12, ordago_sure=0.7),
+    "medio_pasivo": replace(MED, risk_aversion=0.8),
+    "medio_impreciso": replace(MED, noise=0.3),
     "medio_intermedio": replace(MED, discard_draws=0, noise=0.12, samples=90, samples_deep=90),
     "medio_nuevo": replace(
         MED, read_bets=False, discard_draws=0, noise=0.08, samples=120, samples_deep=120
@@ -39,6 +44,15 @@ MATCHES = [
     ("pro+todo", "medio_actual"),
     ("pro+ambos", "medio_intermedio"),
     ("medio_intermedio", "sencillo"),
+    ("pro_actual", "medio_actual"),
+    ("medio_actual", "sencillo"),
+    ("pro_farol12", "medio_actual"),
+    ("pro_ordago70", "medio_actual"),
+    ("pro_ambos", "medio_actual"),
+    ("pro_actual", "medio_pasivo"),
+    ("pro_actual", "medio_impreciso"),
+    ("medio_pasivo", "sencillo"),
+    ("medio_impreciso", "sencillo"),
 ]
 
 

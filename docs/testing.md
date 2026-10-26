@@ -75,6 +75,27 @@ que el medio simula menos, descarta de manual y comete errores; hacer al profesi
 que el medio anterior sigue pendiente (la estrategia que comparten los dos es el cuello de
 botella).
 
+### Menos faroles (medidos en 20 partidas por nivel)
+
+Los bots se iban demasiado de farol: los modelos suponían que el rival se retiraba más de la
+cuenta, y el órdago, al valer la partida entera, compensaba con solo un 60 % de probabilidad.
+Ahora el farol es una decisión deliberada con una frecuencia por nivel (`bluff_rate`) y el
+órdago exige ganar casi seguro (P ≥ 0.8) salvo desesperación en el marcador.
+
+| Nivel | Envites con mano floja (antes → ahora) | Órdagos por partida (antes → ahora) |
+|---|---|---|
+| Medio | 24 % → 15 % | 3.1 → 1.5 (casi todos con P(ganar) ≥ 0.88) |
+| Profesional | 17 % → 8 % | 1.5 → 1.2 |
+
+Consecuencia honesta: parte de la ventaja del profesional venía de castigar los faroles del
+medio. Para mantener la escalera, el medio es ahora **impreciso** (se equivoca en el 30 % de
+las decisiones ajustadas) en lugar de farolero. Con 350 partidas por emparejamiento:
+
+| Partida | % victorias del primero | IC 95 % |
+|---|---|---|
+| profesional vs medio | **56.6 %** | 51 – 62 % |
+| medio vs sencillo | 55.1 % | 50 – 60 % (en el límite) |
+
 ### Ablación del profesional (150 partidas por variante contra el medio)
 
 Para saber qué aporta cada diferencia entre los dos niveles, se quita una sola cada vez:
