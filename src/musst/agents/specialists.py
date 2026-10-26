@@ -12,6 +12,8 @@ from musst.bots.toolkit import (
     sample_world,
     unseen_cards,
 )
+from musst.engine.cards import Card
+from musst.engine.evaluation import pairs, total_points
 from musst.learning.extract import STRONG, WEAK
 from musst.learning.player_model import PRIORS, score_context
 
@@ -101,6 +103,58 @@ def learned_bet_likelihood(strength: float, with_weak: float, with_strong: float
     con mano buena (manos enseñadas al final de cada jugada, FEM VII.9)."""
     t = max(0.0, min(1.0, (strength - WEAK) / (STRONG - WEAK)))
     return max(0.02, with_weak + (with_strong - with_weak) * t)
+
+
+READ_EVENTS = {
+    "Passed": "pass",
+    "BetPlaced": "bet",
+    "BetRaised": "bet",
+    "OrdagoDeclared": "bet",
+    "BetAccepted": "accept",
+    "OrdagoAccepted": "accept",
+    "BetRejected": "reject",
+}
+LIKELIHOOD_FLOOR = 0.12
+"""Nadie juega de forma perfectamente predecible (tapados, faroles, errores)."""
+
+
+def action_likelihood(kind: str, strength: float, bluff: float = 0.15) -> float:
+    """P(observar esa acción | fuerza de su mano en ese lance). Suave, con suelo."""
+    value_bet = 1 / (1 + math.exp(-(strength - BET_THRESHOLD) / 0.08))
+    if kind == "bet":
+        p = bluff * 0.5 + (1 - bluff) * value_bet
+    elif kind == "pass":
+        p = 1 - (bluff * 0.5 + (1 - bluff) * value_bet)
+    elif kind == "accept":
+        p = 1 / (1 + math.exp(-(strength - 0.55) / 0.1))
+    else:  # reject
+        p = 1 - 1 / (1 + math.exp(-(strength - 0.55) / 0.1))
+    return max(LIKELIHOOD_FLOOR, p)
+
+
+def round_reads(ctx: AgentContext) -> list[tuple[int, str, str]]:
+    """(asiento, lance, tipo) de todo lo que han hecho los demás en esta jugada."""
+    out = []
+    for e in ctx.obs.history:
+        kind = READ_EVENTS.get(e["kind"])
+        if kind and e["round"] == ctx.obs.round_no and e["actor"] not in (None, ctx.obs.seat):
+            out.append((e["actor"], e["payload"].get("lance", ""), kind))
+    return out
+
+
+def team_play_value(lance: str, world: dict[int, tuple[Card, ...]], team: int) -> float:
+    """Tantos de jugada que cobra una pareja al ganar el lance [CONVENCIÓN del motor]."""
+    if lance == "punto":
+        return 1.0
+    total = 0.0
+    for seat in (team, team + 2):
+        hand = world[seat]
+        if lance == "pares":
+            total += float(int(pairs(hand).kind))
+        elif lance == "juego":
+            points = total_points(hand)
+            total += 3.0 if points == 31 else 2.0 if points > 31 else 0.0
+    return total
 
 
 class CountingAgent(Agent):
@@ -200,10 +254,16 @@ class ProbabilityAgent(Agent):
                 learned[s] = (ww.value, ws.value, min(ws.confidence, ww.confidence))
         total = wins = 0.0
         acc_b = win_acc_b = acc_o = win_acc_o = 0.0
+        bonus_sum = 0.0
+        read_bets = ctx.config.get("read_bets", True)
+        read_all = ctx.config.get("read_all", False)
+        reads = round_reads(ctx) if read_all else []
+        if read_all:
+            bets = {}  # la lectura completa ya incluye los envites del lance actual
         for _ in range(samples):
             world = sample_world(obs, ctx.rng)
             w = 1.0
-            for seat, n in bets.items():
+            for seat, n in (bets if read_bets else {}).items():
                 strength = hand_strength(world[seat], lance)
                 bluff = ctx.estimate(
                     "comportamiento", f"bluff_frequency_{seat}", PRIORS["bluff_frequency"]
@@ -215,6 +275,11 @@ class ProbabilityAgent(Agent):
                     w *= conf_l * own + (1 - conf_l) * default
                 else:
                     w *= default
+            for seat, rl, kind in reads:
+                bluff = ctx.estimate(
+                    "comportamiento", f"bluff_frequency_{seat}", PRIORS["bluff_frequency"]
+                ).value
+                w *= action_likelihood(kind, hand_strength(world[seat], rl), bluff)
             for seat, n_asked in asked.items():
                 if n_asked >= 0:
                     w *= discard_weight(hand_strength(world[seat], lance), n_asked)
@@ -225,6 +290,8 @@ class ProbabilityAgent(Agent):
             # fuerza de quien envidó: sirve para estimar si aguantará una subida.
             total += w
             wins += w * won
+            if won:
+                bonus_sum += w * team_play_value(lance, world, obs.team)
             if opp >= tau_bet:
                 acc_b += w
                 win_acc_b += w * won
@@ -247,6 +314,7 @@ class ProbabilityAgent(Agent):
         se = (p * (1 - p) / samples) ** 0.5
         conf = max(0.0, 1.0 - 4 * se)
         report.estimates["p_win"] = Estimate(p, conf, samples)
+        report.estimates["team_bonus"] = Estimate(bonus_sum / wins if wins else 0.0, conf, samples)
         report.estimates["p_accept_bet"] = Estimate(acc_b / total if total else 0.0, conf, samples)
         report.estimates["p_win_if_accept_bet"] = Estimate(p_acc_b, conf, samples)
         report.estimates["p_accept_ordago"] = Estimate(

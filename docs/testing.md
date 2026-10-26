@@ -57,6 +57,24 @@ Lectura honesta:
   experimento cada partida crea bots nuevos, así que el profesional **no conserva memoria** de
   sus rivales: su ventaja principal (el PlayerModel) no actúa. Ver el experimento de adaptación.
 
+### Niveles v2 (200 partidas por emparejamiento, `experiments/level_tuning.py`)
+
+Las mejoras probadas en el profesional por separado (descarte simulado, jugada de la pareja,
+leer toda la jugada: pasos, envites, aceptaciones y rechazos de los tres) **no cambiaron su
+resultado frente al medio** (51-55 %, sin diferencia significativa). Lo que sí marca la
+diferencia es leer los envites del rival: un medio que no los lee cae al 35 % frente al medio
+anterior. Con esos datos se redefinieron los niveles (tabla en [Agentes](agents.md)):
+
+| Partida | % victorias del primero | IC 95 % |
+|---|---|---|
+| profesional vs medio (nuevo) | **59 %** | 52 – 66 % |
+| medio (nuevo) vs sencillo | **61.5 %** | 55 – 68 % |
+
+Los dos escalones son ahora significativos. Lectura honesta: la distancia viene sobre todo de
+que el medio simula menos, descarta de manual y comete errores; hacer al profesional más fuerte
+que el medio anterior sigue pendiente (la estrategia que comparten los dos es el cuello de
+botella).
+
 ### Ablación del profesional (150 partidas por variante contra el medio)
 
 Para saber qué aporta cada diferencia entre los dos niveles, se quita una sola cada vez:
