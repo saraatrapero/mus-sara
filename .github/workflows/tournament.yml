@@ -1,4 +1,4 @@
-name: Web (GitHub Pages) y scoreboard
+name: Web, documentación (GitHub Pages) y scoreboard
 
 on:
   push:
@@ -23,8 +23,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      - run: pip install -e .
+      - run: pip install -e ".[docs]"
       - run: python scripts/build_web.py --out site
+      - run: mkdocs build --strict --site-dir site/docs
       - run: musst-arena --games 10 --seed 2026 --out site/scoreboard
       - run: cat site/scoreboard/scoreboard.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-pages-artifact@v3
