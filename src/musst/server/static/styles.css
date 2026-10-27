@@ -365,3 +365,26 @@ button.link { background: none; border: 0; padding: 0; color: var(--accent); tex
 .report { display: grid; gap: 12px; max-height: 60vh; overflow: auto; }
 .report article { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 12px; }
 .report h3 { margin: 0 0 4px; } .report ul { margin: 4px 0; padding-left: 18px; }
+
+/* Mesa en el centro y paneles a los lados (en pantallas anchas) */
+.game:has(.game-layout) { max-width: 1560px; }
+.game-layout { display: grid; gap: 12px; }
+.game-main { display: grid; gap: 12px; min-width: 0; }
+.side { display: grid; gap: 12px; align-content: start; }
+.side:empty { display: none; }
+@media (min-width: 1180px) {
+  .game-layout { grid-template-columns: 270px minmax(0, 1fr) 300px; align-items: start; }
+  .side { position: sticky; top: 12px; }
+  .side .signals { grid-template-columns: 1fr; }
+}
+@media (max-width: 1179px) { .side-left { order: 2; } .side-right { order: 3; } .game-main { order: 1; } }
+.play-panel table th { text-align: left; font-weight: 600; white-space: nowrap; padding-right: 8px; }
+.play-panel tr.now { background: color-mix(in srgb, var(--gold) 22%, transparent); }
+.play-panel td, .play-panel th { padding: 6px 4px; vertical-align: top; }
+.now-line { font-weight: 600; margin: 0 0 6px; }
+.chat-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip.sig-now { background: var(--gold); color: #1d2420; border-color: var(--gold); font-weight: 700; font-size: .8rem; animation: chip-pop calc(260ms * var(--speed)) ease-out; }
+@keyframes chip-pop { from { transform: scale(.6); opacity: 0; } }
+.side, .side > * { min-width: 0; }
+.play-panel table { width: 100%; table-layout: fixed; }
+.play-panel table.data th { width: 34%; white-space: normal; } .play-panel table.data td { white-space: normal; overflow-wrap: anywhere; text-align: left; }
