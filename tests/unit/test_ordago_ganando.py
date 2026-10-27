@@ -17,7 +17,9 @@ def _types(game, seat, p, threshold=0.55):
         "probabilidad",
         {k: Estimate(p, 1.0) for k in ("p_win", "p_win_if_accept_bet", "p_win_if_accept_ordago")},
     )
-    ctx.reports["marcador"] = AgentReport("marcador", {"ordago_threshold": Estimate(threshold, 1.0)})
+    ctx.reports["marcador"] = AgentReport(
+        "marcador", {"ordago_threshold": Estimate(threshold, 1.0)}
+    )
     best = {}
     for c in StrategyAgent().candidates(ctx):
         best[type(c.action)] = c.ev
