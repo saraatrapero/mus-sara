@@ -616,7 +616,7 @@ function pileHTML(obs, seat) {
   const fresh = Math.max(0, n - prev);
   const stones = [...Array(n)].map((_, i) => `<span class="stone ${five ? "five" : ""} ${i >= n - fresh ? "arrive" : ""}">${five ? "5" : ""}</span>`).join("");
   const ghosts = converted ? `<span class="ghosts">${'<span class="stone leave"></span>'.repeat(5)}</span>` : "";
-  const label = five ? `${n} de 5` : `${n} suelta${n === 1 ? "" : "s"}`;
+  const label = five ? `${n} × 5 tantos` : `${n} suelta${n === 1 ? "" : "s"}`;
   return `<div class="pile" role="img" aria-label="${five ? `Piedras de 5 tantos: ${n} (${n * 5} tantos)` : `Piedras sueltas: ${n}`}" data-counter="${seat === counter}">
     <span class="stones-row">${stones}${ghosts}</span><small>${label}</small></div>`;
 }
@@ -652,6 +652,47 @@ function buildReview(obs, round) {
   const score = ev.filter((e) => e.kind === "RoundFinished").pop()?.payload.score || obs.score;
   steps.push({ title: "Total de la jugada", text: `Tu pareja +${mine} · rivales +${theirs}. Marcador: ${score[obs.team]} – ${score[1 - obs.team]} (se gana a ${obs.target}).`, seats: [], last: true });
   return { round, hands, steps };
+}
+
+// Panel "Qué se juega": cada lance de la jugada, su estado y cuánto hay envidado.
+function playPanel(obs) {
+  const lances = ["grande", "chica", "pares", obs.phase === "punto" || obs.lance_statuses?.punto ? "punto" : "juego"];
+  const ev = obs.history.filter((e) => e.round === obs.round);
+  const accepted = (l) => ev.filter((e) => e.kind === "BetAccepted" && e.payload.lance === l).pop()?.payload.amount;
+  const teamName = (t) => (t === obs.team ? "tu pareja" : "los rivales");
+  const rows = lances.map((l) => {
+    const st = obs.lance_statuses?.[l];
+    const now = obs.phase === l;
+    let text;
+    if (now && obs.current_bet) {
+      const b = obs.current_bet;
+      text = b.is_ordago ? `<strong>¡Órdago de ${teamName(b.bettor_team)}!</strong> Se juega la partida`
+        : `<strong>Envite de ${teamName(b.bettor_team)}: ${b.stake} tantos</strong><br><small>Si no se quiere: ${Math.max(1, b.previous)} para ${teamName(b.bettor_team)}</small>`;
+    } else if (now) text = "<strong>Se está jugando</strong> · sin envites aún";
+    else text = { passed: "En paso", accepted: `Querido: ${accepted(l) ?? "?"} tantos`, rejected: "No querido", no_bet: "Sin envite (solo una pareja)", ordago: "Órdago" }[st]
+      ?? (obs.phase === "mus" || obs.phase === "discard" ? "—" : lances.indexOf(obs.phase) > lances.indexOf(l) ? "No se jugó" : "Por jugar");
+    return `<tr class="${now ? "now" : ""}"><th scope="row">${now ? "▶ " : ""}${LANCE[l]}</th><td>${text}</td></tr>`;
+  }).join("");
+  const phase = obs.phase === "mus" ? "Mus: ¿se pide mus o se corta?" : obs.phase === "discard" ? "Descarte: elige qué cartas cambias" : obs.awaiting_deal ? "Esperando el reparto" : null;
+  return `<section class="panel play-panel" aria-label="Qué se juega"><h2 class="card-title">🃏 Qué se juega</h2>
+    ${phase ? `<p class="now-line">${phase}</p>` : ""}<table class="data"><tbody>${rows}</tbody></table>
+    <p class="muted">Marcador: ${obs.score[obs.team]} – ${obs.score[1 - obs.team]} · a ${obs.target}</p></section>`;
+}
+// Mensajes establecidos a la mesa (cortesía), con voz y bocadillo. A veces un bot responde.
+const QUICK_MSGS = ["¡Bien jugado!", "¡Bien cortado!", "¡Buen juego!", "¡Buena mano!", "¡Mala suerte!", "¡Vamos, compañero!", "¡Gracias!"];
+const MSG_REPLY = ["¡Gracias!", "Igualmente", "¡Vamos!", "Ja, ja, a ver la próxima"];
+async function sayToTable(msg) {
+  if (!current || current.saying) return;
+  current.saying = true;
+  try {
+    await speakWithBubble(msg, current.obs.seat, 1200);
+    const bots = current.obs.seats.filter((x) => x.kind === "bot");
+    if (bots.length && Math.random() < 0.6) {
+      const bot = bots[Math.floor(Math.random() * bots.length)];
+      await sleep(400);
+      await speakWithBubble(msg === "¡Gracias!" ? "¡De nada!" : MSG_REPLY[Math.floor(Math.random() * MSG_REPLY.length)], bot.seat, 1100);
+    }
+  } finally { current.saying = false; }
 }
 
 function renderGame(bubbles = current?.bubbles || {}) {
@@ -705,7 +746,7 @@ function renderGame(bubbles = current?.bubbles || {}) {
       ? `<button class="avatar face-btn ${obs.gazes[me] === s.seat ? "watched" : ""}" data-look="${s.seat}" aria-label="Mirar a ${esc(s.name)}" title="Mirar a ${esc(s.name)}">${face}</button>`
       : `<div class="avatar" aria-hidden="true">${face}</div>`;
     return `<div class="seat ${pos} ${obs.turn === s.seat && !obs.awaiting_deal ? "turn" : ""} ${lit ? "lit" : ""}" style="--team-color:var(${s.team === 0 ? "--team-a" : "--team-b"})">
-      ${bubble}${avatar}
+      ${bubble}${avatar}${current.gestures?.[s.seat] ? `<span class="chip sig-now" role="status">${SIGNAL_ICON[current.gestures[s.seat]] ?? "✋"} ${esc(SIGNALS[current.gestures[s.seat]]?.[1] ?? "")}</span>` : ""}
       <div class="seat-name">${esc(s.name)}${s.seat === me ? " (tú)" : ""}${s.level ? ` <span class="chip">${esc(s.level)}</span>` : ""}</div>
       <div class="seat-meta"><span class="chip">${s.team === 0 ? "◆ Pareja A" : "● Pareja B"}</span>${obs.mano === s.seat ? '<span class="chip mano">mano</span>' : ""}${decl("pares")}${decl("juego")}${status}${gaze}</div>
       ${pileHTML(obs, s.seat)}
@@ -760,6 +801,9 @@ function renderGame(bubbles = current?.bubbles || {}) {
         : `<p class="muted">${obs.phase === "mus" || obs.phase === "discard" ? "Las señas se hacen después de cortar el mus." : "Ya has hecho tus señas en esta jugada."}</p>`}
       </div>
     </section>` : "";
+  const chatPanel = finished || handoff != null ? "" : `<section class="panel chat" aria-label="Mensajes a la mesa">
+      <h2 class="card-title">💬 Decir a la mesa</h2>
+      <div class="chat-buttons">${QUICK_MSGS.map((m, i) => `<button class="btn small-btn" data-msg="${i}">${esc(m)}</button>`).join("")}</div></section>`;
   const curtain = handoff != null ? `<div class="curtain panel stack" role="dialog" aria-label="Cambio de jugador">
       <h2 class="card-title">Turno de ${esc(names[handoff])}</h2><p>Pasa el dispositivo a ${esc(names[handoff])}. Las cartas están tapadas.</p>
       <button class="btn primary" id="handoff-btn">Soy ${esc(names[handoff])}: ver mis cartas</button></div>` : "";
@@ -772,6 +816,9 @@ function renderGame(bubbles = current?.bubbles || {}) {
       <div class="scores">${scoreLine(myTeam)}${scoreLine(1 - myTeam)}</div>
     </div>
     ${obs.invite ? `<div class="invite">Invita a tu compañero: comparte este enlace <code>${location.origin}${location.pathname}#join/${obs.game_id}/${obs.invite}</code></div>` : ""}
+    <div class="game-layout">
+    <aside class="side side-left" aria-label="Lo que se juega y mensajes">${playPanel(obs)}${chatPanel}</aside>
+    <div class="game-main">
     <div class="table ${review ? "reviewing" : ""}" role="region" aria-label="Mesa de Mus">
       ${obs.seats.filter((s) => s.seat !== me).map(seatHTML).join("")}
       <div class="center">${center}</div>
@@ -783,7 +830,9 @@ function renderGame(bubbles = current?.bubbles || {}) {
       <div class="jugadas" aria-label="Lo que llevas">${jugadaChips(obs.hand)}</div></div>`}
     <div class="status-line" id="status"></div>
     <div class="actions" id="actions" role="group" aria-label="Acciones disponibles"></div>
-    ${signalPanel}
+    </div>
+    <aside class="side side-right" aria-label="Señas">${signalPanel}</aside>
+    </div>
     <div class="row" style="justify-content:center">
       <button class="btn ghost" id="help-btn" aria-expanded="${current.help}">? ¿Qué puedo hacer?</button>
       ${finished ? '<button class="btn primary" id="summary-btn">Ver resumen</button>' : ""}
@@ -794,6 +843,7 @@ function renderGame(bubbles = current?.bubbles || {}) {
   </div>`));
   current.piles = Object.fromEntries(obs.seats.map((s) => [s.seat, pileFor(obs, s.seat).n]));
   document.getElementById("mic-btn")?.addEventListener("click", listen);
+  document.querySelectorAll("[data-msg]").forEach((b) => (b.onclick = () => sayToTable(QUICK_MSGS[Number(b.dataset.msg)])));
   renderActions();
   document.getElementById("deal-btn")?.addEventListener("click", () => { if (current.review) current.review.done = true; dealCards(); });
   document.getElementById("rev-next")?.addEventListener("click", () => { current.review.step += 1; renderGame(); });
@@ -895,6 +945,13 @@ async function animateTo(obs) {
     const names = obs.seats.map((s) => s.name);
     const fresh = obs.history.filter((e) => e.seq > current.seen);
     const prevRound = current.obs.round;
+    // Tras el descarte, las cartas nuevas se ven ya, sin esperar al resto de la animación.
+    if (obs.round === prevRound && obs.hand.join() !== current.obs.hand.join()) {
+      current.obs = { ...current.obs, hand: obs.hand, phase: obs.phase, legal_actions: [] };
+      current.discard = new Set();
+      play("deal");
+      renderGame();
+    }
     current.bubbles = current.bubbles || {};
     for (const e of fresh) {
       const bubble = BUBBLE[e.kind];
@@ -1034,7 +1091,10 @@ async function makeSignal(signal) {
     const seenBy = made ? made.payload.seen_by : [];
     toast(seenBy.length ? `Te han visto: ${seenBy.map((s) => names[s] + (s === obs.partner ? " (compañero)" : " (rival)")).join(", ")}` : "Nadie te miraba: la seña se ha perdido");
     current.obs = obs; current.seen = maxSeq(obs);
+    // Mi avatar hace el gesto de la seña que acabo de mandar.
+    current.gestures = { ...(current.gestures || {}), [obs.seat]: signal };
     renderGame();
+    setTimeout(() => { if (current?.gestures) { delete current.gestures[obs.seat]; if (!current.animating) renderGame(); } }, 2200);
   } catch (err) { toast(err.message); }
 }
 
