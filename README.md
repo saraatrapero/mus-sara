@@ -1,4 +1,4 @@
-# MUS.ST
+# MUS-sara
 
 > *El Mus que aprende cómo juegas.*
 
