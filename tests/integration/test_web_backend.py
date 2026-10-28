@@ -259,3 +259,27 @@ def test_elegir_a_quien_miro(backend):
     status, obs = backend.handle("POST", f"/api/games/{gid}/look", {"target": 2}, tok)
     assert status == 200 and obs["gazes"][0] == 2
     assert backend.handle("POST", f"/api/games/{gid}/look", {"target": 0}, tok)[0] == 422
+
+
+def test_partido_de_campeonato(tmp_path):
+    """Un partido de campeonato se juega como una personalizada y queda marcado como tal."""
+    b = LocalBackend(tmp_path)
+    b.handle("POST", "/api/auth/register", {"username": "sara", "password": "contraseña-1"}, None)
+    body = {
+        "mode": "campeonato",
+        "rivals": "profesional",
+        "partner": "medio",
+        "target": 30,
+        "signals": False,
+        "names": {"1": "Los Tahúres 1", "3": "Los Tahúres 2", "2": "Compañero"},
+        "seed": 9,
+    }
+    status, data = b.handle("POST", "/api/games", body, None)
+    assert status == 200, data
+    obs = data["observation"]
+    assert obs["mode"] == "campeonato" and obs["target"] == 30
+    assert [s["name"] for s in obs["seats"]][1:] == ["Los Tahúres 1", "Compañero", "Los Tahúres 2"]
+    end = play_until_end(b, data["game_id"], data["seat_token"], obs)
+    assert end["finished"] and end["winner"] in (0, 1)  # a 30 o por órdago
+    _, games = b.handle("GET", "/api/history", None, None)
+    assert games[0]["mode"] == "campeonato"
