@@ -78,10 +78,14 @@ jobs:
       PGPASSWORD: postgres
     steps:
       - uses: actions/checkout@v4
-      # Imitación mínima de Supabase + esquema dos veces (idempotente) + pruebas de RLS
+      # Imitación mínima de Supabase + esquema dos veces (idempotente) + pruebas de RLS,
+      # cada fichero de pruebas en una base de datos limpia.
       - run: |
-          psql -v ON_ERROR_STOP=1 -f supabase/tests/auth_stub.sql
           sed 's/^create extension if not exists pgcrypto.*$/-- pgcrypto simulado/' supabase/schema.sql > /tmp/schema.sql
-          psql -v ON_ERROR_STOP=1 -f /tmp/schema.sql
-          psql -v ON_ERROR_STOP=1 -f /tmp/schema.sql
-          psql -v ON_ERROR_STOP=1 -f supabase/tests/test_schema.sql
+          for t in supabase/tests/test_*.sql; do
+            dropdb --if-exists musst && createdb musst
+            psql -d musst -v ON_ERROR_STOP=1 -f supabase/tests/auth_stub.sql
+            psql -d musst -v ON_ERROR_STOP=1 -f /tmp/schema.sql
+            psql -d musst -v ON_ERROR_STOP=1 -f /tmp/schema.sql
+            psql -d musst -v ON_ERROR_STOP=1 -f "$t"
+          done

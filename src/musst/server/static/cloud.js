@@ -119,3 +119,43 @@ export const adminCreateUser = (username, password, role) => rpc("admin_create_u
 export const adminUpdateUser = (id, { username = null, role = null, password = null }) =>
   rpc("admin_update_user", { p_id: id, p_username: username || null, p_role: role || null, p_password: password || null });
 export const adminDeleteUser = (id) => rpc("admin_delete_user", { p_id: id });
+
+// ------------------------------------------------------------------ publicidad
+// La lee cualquiera (también sin sesión); solo la cambia un administrador (admin_set_ads valida).
+export async function loadAds() {
+  const { data, error } = await client.from("site_settings").select("value").eq("key", "ads").maybeSingle();
+  if (error) throw new Error(error.message);
+  return data?.value ?? null;
+}
+export const adminSetAds = (ads) => rpc("admin_set_ads", { p_ads: ads });
+
+// ------------------------------------------------------------------ campeonatos
+// Al consultarlos se empiezan los que ya han llegado a su fecha (champ_start_due).
+export async function championships() {
+  await rpc("champ_start_due", {});
+  const { data, error } = await client.from("championships")
+    .select("*, champ_teams(captain, partner)").order("starts_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return data;
+}
+export async function championship(id) {
+  await rpc("champ_start_due", {});
+  const [champ, teams, matches, players] = await Promise.all([
+    client.from("championships").select("*").eq("id", id).single(),
+    client.from("champ_teams").select("*").eq("championship_id", id).order("id"),
+    client.from("champ_matches").select("*").eq("championship_id", id).order("round").order("slot"),
+    client.rpc("champ_players", { p_champ: id }),
+  ]);
+  for (const r of [champ, teams, matches, players]) if (r.error) throw new Error(r.error.message);
+  return { ...champ.data, teams: teams.data, matches: matches.data,
+    names: Object.fromEntries(players.data.map((p) => [p.id, p.username])) };
+}
+export const champSignUp = (id, name, partnerOpen) => rpc("champ_sign_up", { p_champ: id, p_team_name: name, p_partner_open: partnerOpen });
+export const champJoin = (teamId) => rpc("champ_join_team", { p_team: teamId });
+export const champLeave = (id) => rpc("champ_leave", { p_champ: id });
+export const champReport = (matchId, winner, score) => rpc("champ_report", { p_match: matchId, p_winner: winner, p_score: score });
+export const adminCreateChampionship = ({ name, startsAt, size, target, signals }) =>
+  rpc("admin_create_championship", { p_name: name, p_starts_at: startsAt, p_size: size, p_target: target, p_signals: signals });
+export const adminStartChampionship = (id) => rpc("admin_start_championship", { p_champ: id });
+export const adminDeleteChampionship = (id) => rpc("admin_delete_championship", { p_champ: id });
+export const adminSetMatchWinner = (matchId, winner) => rpc("admin_set_match_winner", { p_match: matchId, p_winner: winner });
