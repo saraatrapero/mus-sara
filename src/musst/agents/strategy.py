@@ -47,6 +47,12 @@ ORDAGO_LEADING = 0.85
 """Yendo por delante en el marcador no hay prisa: solo se echa o se ve (acepta) un órdago con
 P(ganarlo) ≥ 0.85. Arriesgar la partida entera estando ganando es regalarla."""
 
+ORDAGO_TO_FINISH = 0.3
+"""A punto de salir (el «no quiero» ya nos da la partida), se echa órdago con P(ganarlo) ≥ 0.3:
+el rival tiene que jugarse la partida entera o perderla (petición de la usuaria)."""
+RIVAL_CLOSE = 5
+"""Si al rival le faltan estos tantos o menos, ir por delante ya no es motivo para ser prudente."""
+
 RAISE_ACCEPT = 0.7
 """Probabilidad supuesta de que quien envidó acepte una subida."""
 RAISE_ESCALATION_DECAY = 0.4
@@ -99,7 +105,13 @@ class StrategyAgent:
         bluff_rate = float(ctx.config.get("bluff_rate", 0.1))
         may_bluff = p >= BLUFF_P or ctx.rng.random() < bluff_rate
         ordago_threshold = ctx.estimate("marcador", "ordago_threshold", 0.55).value
-        leading = obs.score[obs.team] > obs.score[1 - obs.team]
+        my_left = obs.target - obs.score[obs.team]
+        their_left = obs.target - obs.score[1 - obs.team]
+        rival_close = their_left <= RIVAL_CLOSE
+        # Ir por delante solo aconseja prudencia si el rival no está a punto de ganar.
+        leading = obs.score[obs.team] > obs.score[1 - obs.team] and not rival_close
+        if rival_close:  # más agresivo: más faroles
+            may_bluff = may_bluff or ctx.rng.random() < bluff_rate
         sure = float(ctx.config.get("ordago_sure", ORDAGO_SURE))
         if leading:
             ordago_ok = p_ord >= max(sure, ORDAGO_LEADING)
@@ -107,6 +119,12 @@ class StrategyAgent:
             ordago_ok = p_ord >= sure or (
                 ordago_threshold < ORDAGO_DESPERATE and p_ord >= ordago_threshold
             )
+        # Lo que se cobra si no quieren mi órdago: 1 tanto (negada) o lo envidado hasta ahora.
+        pending = obs.current_bet
+        on_reject = max(1, pending.stake if pending is not None else 1)
+        finishing = my_left <= on_reject  # si no lo quieren, he ganado la partida
+        if finishing and p_ord >= ORDAGO_TO_FINISH:
+            ordago_ok = True
         if "pass" in types:  # lance abierto
             add(PassAction(), p * (bonus + paso), 0.0)
             spec = obs.spec("bet")
@@ -123,7 +141,9 @@ class StrategyAgent:
                 ev = (1 - a) * (1 + p * bonus) + a * ((2 * pa - 1) * amount + pa * bonus)
                 add(BetAction(amount), ev, a * amount * (pa * (1 - pa)) ** 0.5, p_win_if_accept=pa)
             if ordago_ok:
-                ev_ord = (1 - a_ord) * (1 + p * bonus) + a_ord * (2 * p_ord - 1) * game_value
+                # Si no lo quieren y con eso salgo, el «no quiero» vale la partida entera.
+                won = game_value if finishing else 1 + p * bonus
+                ev_ord = (1 - a_ord) * won + a_ord * (2 * p_ord - 1) * game_value
                 add(OrdagoAction(), ev_ord, a_ord * game_value, p_win_if_accept=p_ord)
             return out
 
@@ -138,6 +158,8 @@ class StrategyAgent:
         )
         p_bluff = ctx.estimate("farol", "p_bluff", 0.0).value
         accept_action: Action = AcceptAction() if accept_type == "accept" else AcceptNoLoseAction()
+        # Si con lo que cobra el rival por mi «no quiero» llega a la meta, rechazar es perder.
+        reject_loses = their_left <= max(1, bet.previous)
         if bet.is_ordago:
             threshold = ctx.estimate("marcador", "ordago_threshold", 0.55).value
             if leading:
@@ -146,7 +168,7 @@ class StrategyAgent:
                 add(accept_action, (p - threshold) * game_value, game_value * 0.5, p_bluff=p_bluff)
             # Se compara contra rechazar (referencia 0): aceptar si P(ganar) supera el umbral
             # que fija el agente de marcador.
-            add(RejectAction(), 0.0, 0.0)
+            add(RejectAction(), -game_value if reject_loses else 0.0, 0.0)
             return out
         stake = bet.stake
         if accept_type:
@@ -156,7 +178,8 @@ class StrategyAgent:
                 stake * (p * (1 - p)) ** 0.5,
                 p_bluff=p_bluff,
             )
-        add(RejectAction(), self._reject_ev(ctx, -bet.previous, p), 0.0)
+        reject_ev = self._reject_ev(ctx, -bet.previous, p)
+        add(RejectAction(), -game_value if reject_loses else reject_ev, 0.0)
         spec = obs.spec("raise")
         if spec is not None and may_bluff:
             for extra in sorted({spec.min_amount or 2, 5}):
@@ -172,7 +195,8 @@ class StrategyAgent:
                 add(RaiseAction(extra), ev, a * total * (p_bet * (1 - p_bet)) ** 0.5)
         if "ordago" in types and ordago_ok:
             a = max(a_ord, RESPONSE_ORDAGO_ACCEPT)
-            ev = (1 - a) * stake + a * (2 * p_ord - 1) * game_value
+            won = game_value if finishing else stake
+            ev = (1 - a) * won + a * (2 * p_ord - 1) * game_value
             add(OrdagoAction(), ev, a * game_value)
         return out
 

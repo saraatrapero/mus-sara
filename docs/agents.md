@@ -54,6 +54,21 @@ declaraciones públicas):
 Así se obtienen P(ganar), P(acepta) y P(ganar | acepta). Sin esto, el bot sobrestima sus
 envites: quien acepta suele tener buena mano.
 
+### El tanteo manda (agente de marcador y estrategia)
+
+No es lo mismo un envite a 5-5 que a 39-10. Además del apetito de riesgo del `ScoreAgent`:
+
+- **A punto de salir.** Si a la pareja le faltan tantos que ya cobra con un «no quiero» (p. ej.
+  le falta 1 y envida a grande), echa **órdago** con P(ganarlo) ≥ 0,3 (`ORDAGO_TO_FINISH`): si no
+  lo quieren, ha ganado la partida; si lo quieren, se juega con buenas opciones. Con una mano sin
+  ninguna opción, no.
+- **Rival a punto de ganar** (le faltan 5 o menos, `RIVAL_CLOSE`): más agresivo. Ir por delante
+  deja de ser motivo para reservarse el órdago, y farolea más.
+- **Un «no quiero» que regala la partida** se valora como perder la partida (no como perder 1 o
+  2 tantos): si al rival le faltan los tantos que cobraría, el bot quiere el envite o el órdago.
+
+Pruebas en `tests/unit/test_tanteo_agresivo.py`.
+
 ## DecisionExplanation
 
 ```python
