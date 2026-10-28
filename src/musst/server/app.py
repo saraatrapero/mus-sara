@@ -59,7 +59,7 @@ class ProfileUpdate(BaseModel):
 
 
 class NewGame(BaseModel):
-    mode: Literal["rapida", "personalizada", "entrenamiento", "contra_bot"] = "rapida"
+    mode: Literal["rapida", "personalizada", "entrenamiento", "contra_bot", "campeonato"] = "rapida"
     name: str = Field(default="Tú", min_length=1, max_length=24)
     partner: Literal["sencillo", "medio", "profesional", "human"] = "sencillo"
     rivals: Literal["sencillo", "medio", "profesional"] = "medio"

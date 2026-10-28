@@ -4,6 +4,7 @@
 // ejecutándose en este navegador con Pyodide (worker.js). Lo decide <meta name="musst-backend">.
 
 import * as cloud from "./cloud.js";
+import { DEFAULT_ADS, DRINKS, backSVG, cleanAds, drinkSVG } from "./publicidad.js";
 
 const $main = document.getElementById("main");
 const $live = document.getElementById("live");
@@ -23,6 +24,7 @@ const store = {
 let settings = { ...DEFAULT_SETTINGS, ...store.get("musst.settings", {}) };
 let user = null;
 let current = null; // partida en curso
+let ads = cleanAds(store.get("musst.ads", DEFAULT_ADS)); // publicidad de la mesa (la elige el admin)
 
 function applySettings() {
   const root = document.documentElement;
@@ -320,7 +322,7 @@ const SOUND_OF = {
 };
 
 // ------------------------------------------------------------------ navegación
-const views = { home, learn, arena, stats, settings: settingsView, game: () => renderGame(), tutorial, training, admin: adminView };
+const views = { home, learn, arena, stats, settings: settingsView, game: () => renderGame(), tutorial, training, admin: adminView, champs: champsView, champ: champView };
 const OPEN_VIEWS = new Set(["learn", "tutorial", "settings"]);
 function loginGate() {
   $main.append(h(`<div class="page"><section class="panel stack login-gate">
@@ -458,9 +460,10 @@ async function startGame(body, opts = {}) {
     current = {
       id: data.game_id, token: data.seat_token, tokens: data.seat_tokens || {}, obs: data.observation, seen: 0,
       help: Boolean(opts.help), discard: new Set(), amount: 2, busy: false, bubbles: {}, gestures: {},
+      champ: opts.champ || null,  // partido de campeonato: al terminar se apunta el resultado
     };
     current.seen = maxSeq(current.obs);
-    store.set("musst.current", { id: current.id, token: current.token, tokens: current.tokens });
+    store.set("musst.current", { id: current.id, token: current.token, tokens: current.tokens, champ: current.champ });
     play("deal");
     go("game");
   } catch (err) { toast(err.message); }
@@ -734,7 +737,7 @@ function renderGame(bubbles = current?.bubbles || {}) {
     const lit = step && step.seats.includes(s.seat);
     const cards = s.seat === me && !review ? "" : shown
       ? `<div class="hand ${lit ? "lit" : ""}">${sortHand(shown).map((c) => cardHTML(c, { small: true })).join("")}</div>`
-      : `<div class="backs" role="img" aria-label="4 cartas ocultas">${'<span class="back"></span>'.repeat(4)}</div>`;
+      : `<div class="backs ad" role="img" aria-label="4 cartas ocultas">${backSVG(ads).repeat(4)}</div>`;
     const bubble = bubbles[s.seat] ? `<span class="bubble ${/ÓRDAGO/i.test(bubbles[s.seat]) ? "ordago" : ""}">${esc(bubbles[s.seat])}</span>` : "";
     const status = s.waiting ? '<span class="chip">esperando…</span>' : !s.connected ? '<span class="chip">desconectado</span>' : "";
     const target = obs.gazes && obs.gazes.length ? obs.gazes[s.seat] : undefined;
@@ -750,7 +753,7 @@ function renderGame(bubbles = current?.bubbles || {}) {
       <div class="seat-name">${esc(s.name)}${s.seat === me ? " (tú)" : ""}${s.level ? ` <span class="chip">${esc(s.level)}</span>` : ""}</div>
       <div class="seat-meta"><span class="chip">${s.team === 0 ? "◆ Pareja A" : "● Pareja B"}</span>${obs.mano === s.seat ? '<span class="chip mano">mano</span>' : ""}${decl("pares")}${decl("juego")}${status}${gaze}</div>
       ${pileHTML(obs, s.seat)}
-      ${pos === "bottom" && !review ? "" : cards}</div>`;
+      ${pos === "bottom" && !review ? "" : `<div class="hand-row">${cards}<span class="drinkbox">${drinkSVG(ads)}</span></div>`}</div>`;
   };
   const bet = obs.current_bet;
   const betInfo = bet ? (bet.is_ordago ? `Órdago de la pareja ${bet.bettor_team === 0 ? "A" : "B"}` : `En juego: ${bet.stake} tantos`) : "";
@@ -811,22 +814,23 @@ function renderGame(bubbles = current?.bubbles || {}) {
   $main.append(h(`
   <div class="game">
     <h1 class="sr-only">Mesa de juego</h1>
-    <div class="scorebar" role="region" aria-label="Marcador">
-      <div><div class="lances" aria-label="Lances">${lanceBar}</div><small class="muted">Jugada ${obs.round} · a ${obs.target} tantos · ${current.obs.mode}</small></div>
-      <div class="scores">${scoreLine(myTeam)}${scoreLine(1 - myTeam)}</div>
-    </div>
     ${obs.invite ? `<div class="invite">Invita a tu compañero: comparte este enlace <code>${location.origin}${location.pathname}#join/${obs.game_id}/${obs.invite}</code></div>` : ""}
     <div class="game-layout">
     <aside class="side side-left" aria-label="Lo que se juega y mensajes">${playPanel(obs)}${chatPanel}</aside>
     <div class="game-main">
     <div class="table ${review ? "reviewing" : ""}" role="region" aria-label="Mesa de Mus">
+      <div class="scorebar" role="region" aria-label="Marcador y fase de la jugada">
+        ${scoreLine(myTeam)}
+        <div class="phase-box"><div class="lances" aria-label="Lances">${lanceBar}</div><small>Jugada ${obs.round} · a ${obs.target} tantos</small></div>
+        ${scoreLine(1 - myTeam)}
+      </div>
       ${obs.seats.filter((s) => s.seat !== me).map(seatHTML).join("")}
       <div class="center">${center}</div>
       ${seatHTML(obs.seats[me])}
       ${finished ? "" : deck}
     </div>
     ${curtain}
-    ${handoff != null || review ? "" : `<div class="my-cards"><div class="hand" id="my-hand" aria-label="Tus cartas, de mayor a menor">${sortHand(obs.hand).map((c) => cardHTML(c, { button: obs.phase === "discard" && myTurn, pressed: current.discard.has(c) })).join("")}</div>
+    ${handoff != null || review ? "" : `<div class="my-cards"><div class="hand-row"><div class="hand" id="my-hand" aria-label="Tus cartas, de mayor a menor">${sortHand(obs.hand).map((c) => cardHTML(c, { button: obs.phase === "discard" && myTurn, pressed: current.discard.has(c) })).join("")}</div><span class="drinkbox">${drinkSVG(ads)}</span></div>
       <div class="jugadas" aria-label="Lo que llevas">${jugadaChips(obs.hand)}</div></div>`}
     <div class="status-line" id="status"></div>
     <div class="actions" id="actions" role="group" aria-label="Acciones disponibles"></div>
@@ -1007,7 +1011,7 @@ async function animateTo(obs) {
     current.obs = obs;
     checkHandoff();
     renderGame();
-    if (obs.finished) { store.set("musst.current", null); setTimeout(showSummary, 600); syncFinishedGame(obs.game_id); }
+    if (obs.finished) { store.set("musst.current", null); setTimeout(showSummary, 600); syncFinishedGame(obs.game_id); reportChampMatch(obs); }
   } finally {
     current.animating = false;
   }
@@ -1502,6 +1506,136 @@ async function loadUser() {
   updateAccount();
 }
 
+// ------------------------------------------------------------------ CAMPEONATOS
+// Eliminatorias de 8, 16 o 32 parejas con nombre y fecha de comienzo (supabase/schema.sql).
+// La gente se apunta hasta la fecha; entonces se sortea el cuadro y las plazas libres se
+// llenan con parejas de bots. Cada pareja juega su partido aquí y el resultado se apunta solo.
+const CHAMP_STATUS = { inscripcion: "Inscripción abierta", en_juego: "En juego", terminado: "Terminado" };
+const ROUND_NAMES = { 1: "Final", 2: "Semifinales", 4: "Cuartos de final", 8: "Octavos de final" };
+const roundName = (size, round) => ROUND_NAMES[size >> round] ?? `Ronda ${round}`;
+const champDate = (d) => new Date(d).toLocaleString("es-ES", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const myId = () => cloud.cloudProfile()?.id;
+
+function champsUnavailable() {
+  $main.append(h(`<div class="page stack"><h1 class="page-title">Campeonatos</h1><section class="panel stack">
+    <p>Los campeonatos necesitan cuentas compartidas entre dispositivos (Supabase), para que cada persona se apunte desde su móvil u ordenador.</p>
+    <p class="muted">La administración lo activa siguiendo <a href="https://saraatrapero.github.io/mus-sara/docs/deployment/" rel="noopener">Despliegue → Cuentas compartidas</a>.</p></section></div>`));
+}
+
+async function champsView() {
+  if (!cloud.cloudEnabled()) return champsUnavailable();
+  $main.append(h(`<div class="page stack"><h1 class="page-title">Campeonatos</h1>
+    <p class="muted">Eliminatorias por parejas: cuartos de final, semifinales y final. Apúntate antes de la fecha de comienzo; las plazas que queden libres las ocupan parejas de bots.</p>
+    <div id="champ-list" class="champ-list">Cargando…</div></div>`));
+  const el = document.getElementById("champ-list");
+  try {
+    const list = await cloud.championships();
+    if (!list.length) { el.innerHTML = '<p class="muted">Todavía no hay campeonatos. Los organiza la administración.</p>'; return; }
+    el.innerHTML = list.map((c) => {
+      const signed = c.champ_teams.some((t) => t.captain === myId() || t.partner === myId());
+      return `<button class="panel champ-card ${c.status}" data-champ="${c.id}">
+        <strong>${esc(c.name)}</strong><span>${CHAMP_STATUS[c.status]}${c.status === "inscripcion" ? ` · empieza ${champDate(c.starts_at)}` : ""}</span>
+        <small class="muted">${c.champ_teams.length}/${c.size} parejas · a ${c.target} tantos${c.signals ? " · con señas" : ""}</small>
+        ${signed ? '<span class="chip-light">Estás apuntado</span>' : ""}</button>`;
+    }).join("");
+    el.querySelectorAll("[data-champ]").forEach((b) => (b.onclick = () => go("champ", Number(b.dataset.champ))));
+  } catch (err) { el.textContent = err.message; }
+}
+
+async function champView(id) {
+  if (!cloud.cloudEnabled()) return champsUnavailable();
+  $main.append(h('<div class="page stack" id="champ">Cargando…</div>'));
+  const el = document.getElementById("champ");
+  let c;
+  try { c = await cloud.championship(id); } catch (err) { el.textContent = err.message; return; }
+  const me = myId();
+  const teams = Object.fromEntries(c.teams.map((t) => [t.id, t]));
+  const mine = c.teams.find((t) => t.captain === me || t.partner === me);
+  const people = (t) => [t.captain, t.partner].filter(Boolean).map((u) => c.names[u] ?? "?");
+  const act = async (fn, okMsg) => { try { await fn(); if (okMsg) toast(okMsg); go("champ", id); } catch (err) { toast(err.message); } };
+  const teamLine = (t) => `<li><strong>${esc(t.name)}</strong> — ${t.is_bot || !people(t).length ? "🤖 pareja de bots"
+    : esc(people(t).join(" y ")) + (t.partner ? "" : t.partner_open && c.status === "inscripcion" ? ' <span class="muted">(busca compañero)</span>' : " y 🤖 bot")}
+    ${c.status === "inscripcion" && !mine && t.partner_open && !t.partner ? `<button class="btn small-btn" data-join="${t.id}">Unirme como compañero</button>` : ""}</li>`;
+  let signup = "";
+  if (c.status === "inscripcion") {
+    signup = mine
+      ? `<div class="panel stack"><p>✔ Estás apuntado con la pareja <strong>${esc(mine.name)}</strong>. El cuadro se sortea el ${champDate(c.starts_at)}.</p>
+          <div><button class="btn" id="champ-leave">Borrarme del campeonato</button></div></div>`
+      : c.teams.length >= c.size ? '<p class="muted">El campeonato está completo.</p>'
+        : `<form class="panel stack" id="champ-signup"><h2 class="card-title">Apuntarse</h2>
+          <label class="field">Nombre de tu pareja<input name="team" maxlength="30" required></label>
+          <div class="seg" role="radiogroup" aria-label="Compañero">
+            <label><input type="radio" name="partner" value="bot" checked> 🤖 Con un bot de compañero</label>
+            <label><input type="radio" name="partner" value="persona"> 👤 Busco compañero persona</label></div>
+          <p class="muted">Si buscas compañero y nadie se une antes de empezar, juegas con un bot.</p>
+          <button class="btn primary">Apuntar mi pareja</button></form>`;
+  }
+  const rounds = [...new Set(c.matches.map((m) => m.round))];
+  const side = (m, teamId, idx) => {
+    if (!teamId) return '<div class="team-row tbd">por decidir</div>';
+    const t = teams[teamId];
+    const won = m.winner === teamId;
+    return `<div class="team-row ${won ? "won" : m.winner ? "lost" : ""} ${mine && mine.id === teamId ? "me" : ""}">
+      <span>${t.is_bot || !people(t).length ? "🤖" : "👤"} ${esc(t.name)}</span>${m.score ? `<b>${m.score[idx]}</b>` : won && m.walkover ? "<small>(adm.)</small>" : ""}</div>`;
+  };
+  const ready = (m) => m.team_a && m.team_b && !m.winner;
+  const human = (teamId) => { const t = teams[teamId]; return Boolean(t && (t.captain || t.partner)); };
+  const matchBox = (m) => {
+    const isMine = mine && ready(m) && [m.team_a, m.team_b].includes(mine.id);
+    const rival = isMine ? (m.team_a === mine.id ? m.team_b : m.team_a) : null;
+    let extra = "";
+    if (isMine && !human(rival)) extra = `<button class="btn primary small-btn" data-play="${m.id}">▶ Jugar mi partido</button>`;
+    else if (isMine) extra = '<small class="muted">Partido entre personas: jugadlo juntos y la administración apuntará el resultado.</small>';
+    if (canAdmin() && ready(m)) extra += `<div class="adm-win"><small>Dar el partido (admin):</small>${[m.team_a, m.team_b].map((t) => `<button class="btn small-btn" data-win="${m.id}:${t}">${esc(teams[t].name)}</button>`).join("")}</div>`;
+    return `<div class="match ${isMine ? "mine" : ""}">${side(m, m.team_a, 0)}${side(m, m.team_b, 1)}${extra}</div>`;
+  };
+  const bracket = rounds.length ? `<div class="table-wrap"><div class="bracket">${rounds.map((r) => `<div class="round"><h3>${roundName(c.size, r)}</h3>
+    ${c.matches.filter((m) => m.round === r).map(matchBox).join("")}</div>`).join("")}</div></div>` : "";
+  const champion = c.winner_team ? `<div class="panel champion">🥇 Campeones: <strong>${esc(teams[c.winner_team].name)}</strong></div>` : "";
+  el.innerHTML = `<div class="row" style="justify-content:space-between"><h1 class="page-title">🏆 ${esc(c.name)}</h1>
+      <div class="row"><button class="btn ghost" data-nav="champs">← Campeonatos</button>${canAdmin() && c.status === "inscripcion" ? '<button class="btn" id="champ-start">▶ Empezar ya (admin)</button>' : ""}</div></div>
+    <p>${CHAMP_STATUS[c.status]} · ${c.status === "inscripcion" ? "empieza" : "empezó"} ${champDate(c.starts_at)} · ${c.teams.length}/${c.size} parejas · partidas a ${c.target} tantos${c.signals ? " · con señas" : ""}</p>
+    ${champion}${signup}${bracket}
+    <section class="panel"><h2 class="card-title">Parejas (${c.teams.length}/${c.size})</h2>
+      ${c.teams.length ? `<ul class="teams">${c.teams.map(teamLine).join("")}</ul>` : '<p class="muted">Aún no se ha apuntado nadie. ¡Sé la primera pareja!</p>'}</section>`;
+  document.getElementById("champ-signup")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    act(() => cloud.champSignUp(id, f.get("team"), f.get("partner") === "persona"), "¡Apuntados!");
+  });
+  document.getElementById("champ-leave")?.addEventListener("click", () => act(() => cloud.champLeave(id), "Te has borrado"));
+  document.getElementById("champ-start")?.addEventListener("click", () => act(() => cloud.adminStartChampionship(id), "Cuadro sorteado"));
+  el.querySelectorAll("[data-join]").forEach((b) => (b.onclick = () => act(() => cloud.champJoin(Number(b.dataset.join)), "Ya sois pareja")));
+  el.querySelectorAll("[data-win]").forEach((b) => (b.onclick = () => {
+    const [m, t] = b.dataset.win.split(":").map(Number);
+    if (confirm(`¿Dar el partido a ${teams[t].name}?`)) act(() => cloud.adminSetMatchWinner(m, t));
+  }));
+  el.querySelectorAll("[data-play]").forEach((b) => (b.onclick = () => {
+    const m = c.matches.find((x) => x.id === Number(b.dataset.play));
+    const rival = teams[m.team_a === mine.id ? m.team_b : m.team_a];
+    const final = m.round === Math.max(...rounds);
+    startGame({
+      mode: "campeonato", players: mine.partner ? "pareja" : "bot", partner: "medio", rivals: final ? "profesional" : "medio",
+      target: c.target, signals: c.signals,
+      names: { "1": `${rival.name} 1`, "3": `${rival.name} 2`, "2": mine.partner ? (c.names[mine.captain === me ? mine.partner : mine.captain] ?? "Compañero") : "Compañero bot" },
+    }, { champ: { id, match: m.id, mine: mine.id, rival: rival.id, mineIsA: m.team_a === mine.id } });
+  }));
+}
+
+// Al terminar un partido de campeonato, se apunta el resultado y el ganador pasa de ronda.
+async function reportChampMatch(obs) {
+  const ch = current?.champ;
+  if (!ch || ch.reported) return;
+  ch.reported = true;
+  const won = obs.winner === obs.team;
+  const mineScore = obs.score[obs.team], rivalScore = obs.score[1 - obs.team];
+  const score = ch.mineIsA ? [mineScore, rivalScore] : [rivalScore, mineScore];
+  try {
+    await cloud.champReport(ch.match, won ? ch.mine : ch.rival, score);
+    toast(won ? "🏆 ¡Pasáis a la siguiente ronda!" : "Fin del campeonato para vosotros. ¡Otra vez será!");
+  } catch (err) { toast(`No se pudo apuntar el resultado: ${err.message}`); }
+}
+
 // ------------------------------------------------------------------ administración
 // Panel del administrador: usuarios (crear, editar, borrar), actividad, resultados contra cada
 // nivel de bot, estilos de juego que la IA ha detectado y autocrítica de los bots.
@@ -1577,6 +1711,95 @@ async function adminView() {
   el.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => userDialog(byUser[b.dataset.edit])));
   el.querySelectorAll("[data-del]").forEach((b) => (b.onclick = () => deleteDialog(byUser[b.dataset.del])));
   el.querySelectorAll("[data-detail]").forEach((b) => (b.onclick = () => userDetail(byUser[b.dataset.detail])));
+  adminExtras(el);
+}
+// Publicidad (reverso de las cartas y consumición) y campeonatos, al final del panel.
+async function adminExtras(el) {
+  const form = { ...ads };
+  const box = h(`<div class="grid-2">
+    <section class="panel stack" aria-label="Publicidad"><h2 class="card-title">📢 Publicidad en la mesa</h2>
+      <form id="ads-form" class="stack">
+        <div class="form-grid">
+          <label class="field">Marca en el reverso<input name="card_brand" maxlength="24" required></label>
+          <label class="field">Color del reverso<input name="card_color" type="color"></label>
+          <label class="field">Consumición<select name="drink">${Object.entries(DRINKS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label>
+          <label class="field">Marca de la consumición<input name="drink_brand" maxlength="24"></label>
+          <label class="field">Color de la etiqueta<input name="drink_color" type="color"></label>
+        </div>
+        <div class="form-grid">
+          <label class="field">Logo del reverso (opcional)<input name="card_image" type="file" accept="image/png,image/jpeg,image/webp"></label>
+          <label class="field">Logo de la etiqueta (opcional)<input name="drink_image" type="file" accept="image/png,image/jpeg,image/webp"></label>
+        </div>
+        <div class="row"><button type="button" class="btn ghost" id="ads-noimg">Quitar logos</button><button class="btn primary">Guardar publicidad</button></div>
+        <p class="muted" id="ads-msg">${cloud.cloudEnabled() ? "Se verá en todas las mesas, en cualquier dispositivo." : "Sin cuentas compartidas (Supabase) solo se guarda en este navegador."} Logos PNG, JPEG o WebP de hasta 290 KB.</p>
+      </form>
+      <div class="ad-preview" id="ads-preview" aria-label="Así se ve en la mesa"></div>
+    </section>
+    <section class="panel stack" aria-label="Campeonatos"><h2 class="card-title">🏆 Campeonatos</h2>
+      ${cloud.cloudEnabled() ? `<form id="champ-form" class="stack">
+        <label class="field">Nombre<input name="name" maxlength="60" required placeholder="p. ej. Campeonato de Navidad"></label>
+        <div class="form-grid">
+          <label class="field">Empieza<input name="starts" type="datetime-local" required></label>
+          <label class="field">Parejas<select name="size"><option value="8">8 (cuartos, semis y final)</option><option value="16">16 (desde octavos)</option><option value="32">32</option></select></label>
+          <label class="field">Partidas a<select name="target"><option>40</option><option>30</option></select></label>
+          <label class="field">Señas<select name="signals"><option value="0">Sin señas</option><option value="1">Con señas</option></select></label>
+        </div>
+        <button class="btn primary">Crear campeonato</button></form>
+        <div id="champ-admin-list" class="stack muted">Cargando…</div>`
+        : '<p class="muted">Los campeonatos necesitan cuentas compartidas entre dispositivos (Supabase). Ver «Despliegue» en la documentación.</p>'}
+    </section></div>`);
+  el.append(box);
+  const f = document.getElementById("ads-form");
+  for (const k of ["card_brand", "card_color", "drink", "drink_brand", "drink_color"]) f.elements[k].value = form[k] ?? "";
+  const preview = () => {
+    document.getElementById("ads-preview").innerHTML = `${backSVG(form, "bcard big")}${backSVG(form, "bcard big")}<span class="drinkbox big">${drinkSVG(form)}</span>`;
+  };
+  f.addEventListener("input", (e) => { if (e.target.type !== "file" && e.target.name) { form[e.target.name] = e.target.value; preview(); } });
+  for (const k of ["card_image", "drink_image"]) {
+    f.elements[k].addEventListener("change", () => {
+      const file = f.elements[k].files[0];
+      if (!file) return;
+      if (file.size > 290 * 1024) { toast("La imagen pesa demasiado: máximo 290 KB"); f.elements[k].value = ""; return; }
+      const reader = new FileReader();
+      reader.onload = () => { form[k] = reader.result; preview(); };
+      reader.readAsDataURL(file);
+    });
+  }
+  document.getElementById("ads-noimg").onclick = () => { form.card_image = null; form.drink_image = null; f.elements.card_image.value = ""; f.elements.drink_image.value = ""; preview(); };
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      ads = cleanAds(cloud.cloudEnabled() ? await cloud.adminSetAds(form) : form);
+      store.set("musst.ads", ads);
+      toast("Publicidad guardada");
+    } catch (err) { toast(err.message); }
+  };
+  preview();
+  if (!cloud.cloudEnabled()) return;
+  const cf = document.getElementById("champ-form");
+  const tomorrow = new Date(Date.now() + 864e5); tomorrow.setMinutes(0, 0, 0);
+  cf.elements.starts.value = new Date(tomorrow - tomorrow.getTimezoneOffset() * 6e4).toISOString().slice(0, 16);
+  cf.onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const id = await cloud.adminCreateChampionship({ name: cf.elements.name.value, startsAt: new Date(cf.elements.starts.value).toISOString(),
+        size: Number(cf.elements.size.value), target: Number(cf.elements.target.value), signals: cf.elements.signals.value === "1" });
+      toast("Campeonato creado: ya se puede apuntar la gente");
+      go("champ", id);
+    } catch (err) { toast(err.message); }
+  };
+  const list = document.getElementById("champ-admin-list");
+  try {
+    const champs = await cloud.championships();
+    list.innerHTML = champs.length ? `<table class="data"><thead><tr><th class="l">Nombre</th><th>Empieza</th><th>Parejas</th><th>Estado</th><th></th></tr></thead><tbody>
+      ${champs.map((c) => `<tr><td class="l"><button class="link" data-champ="${c.id}">${esc(c.name)}</button></td><td>${champDate(c.starts_at)}</td><td>${c.champ_teams.length}/${c.size}</td><td>${CHAMP_STATUS[c.status]}</td>
+        <td><button class="btn small-btn" data-champ-del="${c.id}">Borrar</button></td></tr>`).join("")}</tbody></table>` : "Todavía no hay campeonatos.";
+    list.querySelectorAll("[data-champ]").forEach((b) => (b.onclick = () => go("champ", Number(b.dataset.champ))));
+    list.querySelectorAll("[data-champ-del]").forEach((b) => (b.onclick = async () => {
+      if (!confirm("¿Borrar este campeonato con sus parejas y partidos?")) return;
+      try { await cloud.adminDeleteChampionship(Number(b.dataset.champDel)); go("admin"); } catch (err) { toast(err.message); }
+    }));
+  } catch (err) { list.textContent = err.message; }
 }
 // Informe privado (solo administración): cómo juega cada persona, en prosa, a partir de lo que
 // ha aprendido la IA. Se puede descargar o imprimir; no se publica en ningún sitio.
@@ -1680,6 +1903,7 @@ async function boot() {
     try { await startWorker(); } catch { return; }
     try {
       if (await cloud.initCloud()) {
+        try { const remote = await cloud.loadAds(); if (remote) ads = cleanAds(remote); } catch { /* publicidad por defecto */ }
         const prof = cloud.cloudProfile();
         if (prof) await attachCloudProfile(prof);
         else await api("/api/auth/logout", { method: "POST" }); // sin sesión en la nube, sin perfil
