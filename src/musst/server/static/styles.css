@@ -495,3 +495,63 @@ body.playing #main { padding-top: 14px; }
 .more .form-grid { margin-top: 10px; }
 .btn.big { font-size: 1.1rem; padding: 12px 24px; justify-self: start; }
 .game-row { justify-content: space-between; border-bottom: 1px solid var(--line); padding: 6px 0; color: inherit; }
+
+/* ------------------------------------------------------------------ todo en una pantalla al jugar */
+/* Jugando, la mesa (rectangular) y los paneles laterales, pegados a los bordes, ocupan la pantalla
+   entera: se ve todo, botones incluidos, sin desplazarse. */
+body.playing .site-footer { display: none; }
+body.playing #main { padding-top: 0; }
+body.playing .game {
+  max-width: none; height: 100dvh; padding: 16px 0 6px; gap: 4px; box-sizing: border-box; overflow: hidden;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+body.playing .game-layout { height: 100%; min-height: 0; gap: 8px; }
+body.playing .game-main { height: 100%; min-height: 0; grid-template-rows: minmax(0, 1fr); }
+body.playing .side { height: 100%; overflow-y: auto; position: static; align-content: start; }
+body.playing .side .panel { border-radius: 0; padding: 10px 12px; }
+body.playing .side-left .panel { border-left: 0; }
+body.playing .side-right .panel { border-right: 0; }
+body.playing .side .card-title { font-size: 1.05rem; margin: 0 0 4px; }
+body.playing .game-tools { justify-content: center; gap: 6px; }
+body.playing .game-tools .btn { padding: 4px 10px; font-size: .85rem; }
+body.playing .help-panel:not([hidden]) { position: fixed; right: 16px; bottom: 50px; width: min(460px, 90vw); max-height: 60vh; overflow: auto; z-index: 8; box-shadow: var(--shadow); }
+/* Mesa rectangular que llena su hueco */
+body.playing .table {
+  height: 100%; min-height: 0; box-sizing: border-box; padding: 8px 12px; gap: 2px; border-radius: 6px; border-width: 8px;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto; overflow: hidden;
+}
+body.playing .center { min-height: 0; padding: 4px; }
+body.playing .center .lance-title { font-size: clamp(1rem, 3vh, 1.6rem); }
+body.playing .seat { gap: 2px; }
+body.playing .seat .avatar { width: clamp(36px, 6vh, 56px); height: clamp(36px, 6vh, 56px); }
+body.playing .seat-name { font-size: .8rem; }
+body.playing .pile small { display: none; }
+body.playing .stone { width: 11px; height: 11px; } body.playing .stone.five { width: 16px; height: 16px; font-size: .5rem; }
+body.playing .backs.ad .bcard,
+body.playing .seat.left .backs.ad .bcard, body.playing .seat.right .backs.ad .bcard { height: clamp(30px, 7vh, 72px); width: calc(clamp(30px, 7vh, 72px) * 2 / 3); }
+body.playing .drinkbox svg.drink { height: clamp(24px, 5vh, 60px); width: auto; }
+body.playing .table-hand { gap: 4px; padding-top: 0; }
+body.playing .my-cards { gap: 10px; }
+body.playing .my-cards .card { height: clamp(66px, 14vh, 126px); width: calc(clamp(66px, 14vh, 126px) * 2 / 3); }
+body.playing .my-cards .drinkbox svg.drink { height: clamp(30px, 7vh, 66px); }
+body.playing .jugada { padding: 2px 10px; font-size: .85rem; }
+body.playing .act { min-height: 40px; padding: 6px 14px; }
+body.playing .status-line { min-height: 1.2em; font-size: .85rem; }
+body.playing .table > .scorebar { margin: 0 auto 2px; padding: 2px 14px; }
+body.playing .table > .scorebar .score-line strong { font-size: 1.2rem; }
+body.playing .deck-top, body.playing .deck-right { top: 52px; }
+body.playing .curtain { position: fixed; inset: 30% auto auto 50%; transform: translateX(-50%); z-index: 8; }
+@media (max-width: 1179px) {
+  body.playing .game { height: auto; overflow: visible; padding: 16px 6px 6px; }
+  body.playing .game-main { height: auto; }
+  body.playing .table { height: calc(100dvh - 24px); }
+}
+@media (min-width: 1180px) {
+  body.playing { overflow: hidden; }
+  body.playing .side .panel:last-child { min-height: 100%; box-sizing: border-box; }
+}
+/* La baraja de quien reparte desde mi sitio va a la altura de mi cara, no encima de mis cartas */
+body.playing .deck-bottom { bottom: auto; top: 54%; right: 22%; }
+/* Los botones de acción dentro del tapete conservan su texto oscuro (el tapete pone el texto claro) */
+.table .act, .table .amount { color: var(--fg); }
+.table .act.ordago { color: var(--accent-fg); }
