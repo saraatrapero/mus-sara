@@ -187,8 +187,9 @@ table.data th:first-child, table.data td:first-child, table.data td.l, table.dat
 .bubble {
   position: absolute; top: -8px; left: 50%; transform: translate(-50%, -100%);
   background: #fffcf5; color: #1d2420; padding: 4px 10px; border-radius: 10px; font-weight: 700; font-size: .85rem;
-  box-shadow: var(--shadow); white-space: nowrap; z-index: 3; animation: pop calc(220ms * var(--speed)) ease-out;
+  box-shadow: var(--shadow); white-space: nowrap; z-index: 3;
 }
+.bubble.fresh { animation: pop calc(220ms * var(--speed)) ease-out; }
 .bubble.ordago { background: var(--accent); color: var(--accent-fg); }
 @keyframes pop { from { transform: translate(-50%, -80%) scale(.7); opacity: 0; } to { transform: translate(-50%, -100%) scale(1); opacity: 1; } }
 
@@ -555,3 +556,10 @@ body.playing .deck-bottom { bottom: auto; top: 54%; right: 22%; }
 /* Los botones de acción dentro del tapete conservan su texto oscuro (el tapete pone el texto claro) */
 .table .act, .table .amount { color: var(--fg); }
 .table .act.ordago { color: var(--accent-fg); }
+
+/* Bocadillos al lado de la cara (no encima): así no tapan el marcador ni lo que hay alrededor */
+.seat .bubble { top: 0; left: calc(50% + clamp(26px, 4vh, 36px)); transform: none; z-index: 4; }
+.seat.right .bubble { left: auto; right: calc(50% + clamp(26px, 4vh, 36px)); }
+.seat .bubble.fresh { animation: pop-side calc(220ms * var(--speed)) ease-out; }
+@keyframes pop-side { from { transform: scale(.7); opacity: 0; } to { transform: none; opacity: 1; } }
+body.playing .deck-left { bottom: auto; top: 54%; left: 22%; }

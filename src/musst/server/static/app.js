@@ -649,16 +649,27 @@ function playPanel(obs) {
 // Mensajes establecidos a la mesa (cortesía), con voz y bocadillo. A veces un bot responde.
 const QUICK_MSGS = ["¡Bien jugado!", "¡Bien cortado!", "¡Buen juego!", "¡Buena mano!", "¡Mala suerte!", "¡Vamos, compañero!", "¡Gracias!"];
 const MSG_REPLY = ["¡Gracias!", "Igualmente", "¡Vamos!", "Ja, ja, a ver la próxima"];
+function clearBubbleLater(seat, text, ms = 2500) {
+  setTimeout(() => {
+    if (!current?.bubbles || current.bubbles[seat] !== text) return;
+    delete current.bubbles[seat];
+    if (!current.animating && document.querySelector(".game")) renderGame();
+  }, ms);
+}
 async function sayToTable(msg) {
   if (!current || current.saying) return;
   current.saying = true;
   try {
-    await speakWithBubble(msg, current.obs.seat, 1200);
+    const me = current.obs.seat;
+    await speakWithBubble(msg, me, 1200);
+    clearBubbleLater(me, msg);
     const bots = current.obs.seats.filter((x) => x.kind === "bot");
     if (bots.length && Math.random() < 0.6) {
       const bot = bots[Math.floor(Math.random() * bots.length)];
       await sleep(400);
-      await speakWithBubble(msg === "¡Gracias!" ? "¡De nada!" : MSG_REPLY[Math.floor(Math.random() * MSG_REPLY.length)], bot.seat, 1100);
+      const reply = msg === "¡Gracias!" ? "¡De nada!" : MSG_REPLY[Math.floor(Math.random() * MSG_REPLY.length)];
+      await speakWithBubble(reply, bot.seat, 1100);
+      clearBubbleLater(bot.seat, reply);
     }
   } finally { current.saying = false; }
 }
@@ -703,7 +714,9 @@ function renderGame(bubbles = current?.bubbles || {}) {
     const cards = s.seat === me && !review ? "" : shown
       ? `<div class="hand ${lit ? "lit" : ""}">${sortHand(shown).map((c) => cardHTML(c, { small: true })).join("")}</div>`
       : `<div class="backs ad" role="img" aria-label="4 cartas ocultas">${backSVG(ads).repeat(4)}</div>`;
-    const bubble = bubbles[s.seat] ? `<span class="bubble ${/ÓRDAGO/i.test(bubbles[s.seat]) ? "ordago" : ""}">${esc(bubbles[s.seat])}</span>` : "";
+    // El bocadillo solo hace la animación de aparecer la primera vez, no en cada repintado.
+    const fresh = bubbles[s.seat] && current.shownBubbles?.[s.seat] !== bubbles[s.seat];
+    const bubble = bubbles[s.seat] ? `<span class="bubble ${fresh ? "fresh" : ""} ${/ÓRDAGO/i.test(bubbles[s.seat]) ? "ordago" : ""}">${esc(bubbles[s.seat])}</span>` : "";
     const status = s.waiting ? '<span class="chip">esperando…</span>' : !s.connected ? '<span class="chip">desconectado</span>' : "";
     const target = obs.gazes && obs.gazes.length ? obs.gazes[s.seat] : undefined;
     const lookPos = target == null ? "mesa" : seatPosition(target, me);
@@ -812,6 +825,7 @@ function renderGame(bubbles = current?.bubbles || {}) {
     </div>
     <div id="help" class="help-panel" ${current.help ? "" : "hidden"}></div>
   </div>`));
+  current.shownBubbles = { ...bubbles };
   current.piles = Object.fromEntries(obs.seats.map((s) => [s.seat, pileFor(obs, s.seat).n]));
   document.getElementById("mic-btn")?.addEventListener("click", listen);
   document.querySelectorAll("[data-msg]").forEach((b) => (b.onclick = () => sayToTable(QUICK_MSGS[Number(b.dataset.msg)])));
