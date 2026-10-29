@@ -320,7 +320,7 @@ const SOUND_OF = {
 };
 
 // ------------------------------------------------------------------ navegación
-const views = { home, learn, arena, stats, settings: settingsView, game: () => renderGame(), tutorial, training, admin: adminView };
+const views = { home, learn, arena, stats, settings: settingsView, game: () => renderGame(), tutorial, training, admin: adminView, profile };
 const OPEN_VIEWS = new Set(["learn", "tutorial", "settings"]);
 function loginGate() {
   $main.append(h(`<div class="page"><section class="panel stack login-gate">
@@ -334,6 +334,7 @@ function loginGate() {
 function go(name, ...args) {
   document.querySelectorAll(".topnav button").forEach((b) => b.setAttribute("aria-current", b.dataset.nav === name ? "page" : "false"));
   $main.innerHTML = "";
+  document.body.classList.toggle("playing", name === "game");
   // Sin sesión no se juega: primero hay que entrar (las cuentas guardan lo que la IA aprende).
   if (!user && !OPEN_VIEWS.has(name)) { loginGate(); return; }
   (views[name] || home)(...args);
@@ -345,7 +346,7 @@ document.addEventListener("click", (e) => {
   if (nav) { e.preventDefault(); go(nav.dataset.nav); }
 });
 document.getElementById("mute").addEventListener("click", () => { settings.sound = !settings.sound; saveSettings(); });
-document.getElementById("account").addEventListener("click", () => (user ? accountMenu() : loginDialog()));
+document.getElementById("account").addEventListener("click", () => (user ? go("profile") : loginDialog()));
 
 // ------------------------------------------------------------------ inicio (JUGAR)
 function home() {
@@ -363,13 +364,33 @@ function home() {
       </div>
       <div class="hero-table" aria-hidden="true"><div class="hand">${["12O", "3C", "1E", "11B"].map((c) => cardHTML(c)).join("")}</div></div>
     </section>
-    <section class="panel signals-choice" aria-label="Señas">
-      <div><span class="kicker">Antes de empezar</span><h2 class="card-title">¿Jugamos con señas?</h2>
-        <p class="muted">Con señas, cada jugador puede hacer a su compañero los gestos del reglamento (guiñar un ojo = la 31…) y solo los ve quien le está mirando.</p></div>
-      <div class="seg" role="radiogroup" aria-label="Señas">
-        <label><input type="radio" name="signals" value="1" ${settings.signals !== false ? "checked" : ""}> 👀 Con señas</label>
-        <label><input type="radio" name="signals" value="0" ${settings.signals === false ? "checked" : ""}> 🙈 Sin señas</label>
-      </div>
+    <section class="panel stack play-form" aria-label="Nueva partida">
+      <span class="kicker">Jugar</span><h2 class="card-title">Nueva partida</h2>
+      <form id="custom" class="stack">
+        <fieldset class="seg-field"><legend>¿Quiénes jugáis?</legend><div class="seg">
+          <label><input type="radio" name="players" value="bot" checked> 🙋 Yo con un bot</label>
+          <label><input type="radio" name="players" value="pareja"> 👥 Dos personas</label>
+          <label><input type="radio" name="players" value="cuatro"> 👨‍👩‍👧‍👦 Cuatro personas</label>
+        </div></fieldset>
+        <fieldset class="seg-field"><legend>Dificultad de los bots</legend><div class="seg">
+          <label><input type="radio" name="rivals" value="sencillo"> Fácil</label>
+          <label><input type="radio" name="rivals" value="medio" checked> Normal</label>
+          <label><input type="radio" name="rivals" value="profesional"> Difícil</label>
+        </div></fieldset>
+        <fieldset class="seg-field"><legend>¿Con señas? <small class="muted">(gestos al compañero, como guiñar un ojo = la 31)</small></legend><div class="seg">
+          <label><input type="radio" name="signals" value="1" ${settings.signals !== false ? "checked" : ""}> 👀 Con señas</label>
+          <label><input type="radio" name="signals" value="0" ${settings.signals === false ? "checked" : ""}> 🙈 Sin señas</label>
+        </div></fieldset>
+        <details class="more"><summary>Más opciones</summary>
+          <div class="form-grid">
+            <label class="field">Partida a<select name="target"><option value="40">40 tantos</option><option value="30">30 tantos</option><option value="20">20 tantos (corta)</option></select></label>
+            <label class="field">Nombre compañero/a<input name="n2" maxlength="24" placeholder="Compañero"></label>
+            <label class="field">Nombre rival 1<input name="n1" maxlength="24" placeholder="Bot 1"></label>
+            <label class="field">Nombre rival 2<input name="n3" maxlength="24" placeholder="Bot 2"></label>
+          </div>
+        </details>
+        <button class="btn primary big">Empezar a jugar</button>
+      </form>
     </section>
     <section class="panel score-help" aria-label="Cómo se cuentan los tantos">
       <span class="kicker">El conteo</span><h2 class="card-title">Cómo se cuentan los tantos</h2>
@@ -377,54 +398,9 @@ function home() {
       <p class="muted">Cuando el que cuenta junta 5 piedras, las devuelve al centro y su compañero coge una piedra de 5 delante de él. Así, con un vistazo a la mesa sabes cuánto lleva cada pareja.</p>
       <div class="stone-demo" aria-hidden="true"><span class="pile-demo">${'<span class="stone"></span>'.repeat(3)}<small>3 sueltas</small></span><span class="pile-demo">${'<span class="stone five">5</span>'.repeat(2)}<small>2 de 5</small></span><strong>= 13 tantos</strong></div>
     </section>
-    <section class="pillars" aria-label="Modos de juego">
-      <div class="panel stack">
-        <span class="kicker">Jugar</span><h2 class="card-title">Personalizada</h2>
-        <form id="custom" class="stack">
-          <fieldset class="players-choice"><legend>Jugadores</legend>
-            <label><input type="radio" name="players" value="bot" checked> Yo con un bot contra 2 bots</label>
-            <label><input type="radio" name="players" value="pareja"> Yo y otra persona contra 2 bots</label>
-            <label><input type="radio" name="players" value="cuatro"> 4 personas</label>
-            <small class="muted">Varias personas juegan en este mismo dispositivo: al cambiar de turno se tapan las cartas.</small>
-          </fieldset>
-          <div class="form-grid">
-            <label class="field">Rivales<select name="rivals"><option value="sencillo">Sencillo</option><option value="medio" selected>Medio</option><option value="profesional">Profesional</option></select></label>
-            <label class="field">Compañero<select name="partner"><option value="sencillo">Bot sencillo</option><option value="medio">Bot medio</option><option value="profesional">Bot profesional</option>${LOCAL ? "" : '<option value="human">Humano (invitación)</option>'}</select></label>
-            <label class="field">Tantos<select name="target"><option>40</option><option>30</option><option>20</option><option>60</option></select></label>
-            <label class="field">Tu nombre<input name="name" maxlength="24" value="Tú"></label>
-            <label class="field">Nombre compañero/a<input name="n2" maxlength="24" placeholder="Compañero"></label>
-            <label class="field">Nombre rival 1<input name="n1" maxlength="24" placeholder="Bot 1"></label>
-            <label class="field">Nombre rival 2<input name="n3" maxlength="24" placeholder="Bot 2"></label>
-            <label class="field">Avatar<select name="avatar"><option>🧑</option><option>👩</option><option>👨</option><option>🧔</option><option>👩‍🎓</option><option>🧑‍🏫</option></select></label>
-            <label class="field">Semilla (opcional)<input name="seed" inputmode="numeric" pattern="[0-9]*"></label>
-          </div>
-          <button class="btn primary">Empezar</button>
-        </form>
-      </div>
-      <div class="panel stack">
-        <span class="kicker">Entrenar</span><h2 class="card-title">Contra un bot</h2>
-        <p class="muted">Elige un bot concreto y enfréntate a él tantas veces como quieras.</p>
-        <label class="field">Bot<select id="vs-bot"><option value="sencillo">Sencillo</option><option value="medio">Medio</option><option value="profesional">Profesional</option></select></label>
-        <button class="btn" id="vs-start">Jugar contra este bot</button>
-        <hr style="border:0;border-top:1px solid var(--line);width:100%">
-        <h2 class="card-title">Entrenamiento</h2>
-        <p class="muted">Sin presión: con el asistente de reglas abierto y análisis al terminar.</p>
-        <button class="btn" id="train-game">Partida de entrenamiento</button>
-        <button class="btn ghost" data-nav="training">Situaciones de entrenamiento</button>
-      </div>
-      <div class="panel stack">
-        <span class="kicker">Continuar</span><h2 class="card-title">Tus partidas</h2>
-        <div id="resume" class="stack muted">Inicia sesión para guardar tu historial, estadísticas y logros.</div>
-      </div>
-    </section>
   </div>`));
   document.querySelectorAll('input[name="signals"]').forEach((r) => (r.onchange = () => { settings.signals = r.value === "1"; saveSettings(); }));
   document.getElementById("quick").onclick = () => startGame({ mode: "rapida", rivals: "medio", partner: "sencillo" });
-  document.getElementById("vs-start").onclick = () => {
-    const b = document.getElementById("vs-bot").value;
-    startGame({ mode: "contra_bot", rivals: b, partner: "sencillo" });
-  };
-  document.getElementById("train-game").onclick = () => startGame({ mode: "entrenamiento", rivals: "sencillo", partner: "sencillo" }, { help: true });
   document.getElementById("custom").onsubmit = (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
@@ -433,26 +409,15 @@ function home() {
     if (f.get("n3")) names["3"] = f.get("n3");
     if (f.get("n2")) names["2"] = f.get("n2");
     startGame({
-      mode: "personalizada", players: f.get("players"), rivals: f.get("rivals"), partner: f.get("partner"), target: Number(f.get("target")),
-      name: f.get("name") || "Tú", names, avatar: f.get("avatar"), seed: f.get("seed") ? Number(f.get("seed")) : null,
+      mode: "personalizada", players: f.get("players"), rivals: f.get("rivals"), partner: f.get("rivals"), target: Number(f.get("target")),
+      name: user?.username || "Tú", names,
     });
   };
-  if (user) {
-    api("/api/history").then((games) => {
-      const el = document.getElementById("resume");
-      if (!games.length) { el.textContent = "Aún no has jugado ninguna partida."; return; }
-      el.innerHTML = games.slice(0, 6).map((g) => `<div class="row" style="justify-content:space-between">
-        <span>${new Date(g.started_at * 1000).toLocaleDateString()} · ${esc(g.mode)}</span>
-        <span>${g.status === "FINISHED" ? (g.won ? "✔ Victoria" : "✘ Derrota") : `<button class="btn ghost" data-resume="${g.id}">Continuar</button>`}
-        ${g.status === "FINISHED" ? `<button class="btn ghost" data-replay="${g.id}">▶ Replay</button>` : ""}</span></div>`).join("");
-      el.querySelectorAll("[data-replay]").forEach((b) => (b.onclick = () => openReplay(b.dataset.replay)));
-      el.querySelectorAll("[data-resume]").forEach((b) => (b.onclick = () => resumeGame(b.dataset.resume)));
-    }).catch(() => {});
-  }
 }
 
 // ------------------------------------------------------------------ partida
 async function startGame(body, opts = {}) {
+  if (!user) { loginDialog(); return; }
   try {
     const data = await api("/api/games", { method: "POST", body: { signals: settings.signals !== false, ...body } });
     current = {
@@ -824,12 +789,14 @@ function renderGame(bubbles = current?.bubbles || {}) {
       <div class="center">${center}</div>
       ${seatHTML(obs.seats[me])}
       ${finished ? "" : deck}
-    </div>
-    ${curtain}
+      <div class="table-hand">
     ${handoff != null || review ? "" : `<div class="my-cards"><div class="hand" id="my-hand" aria-label="Tus cartas, de mayor a menor">${sortHand(obs.hand).map((c) => cardHTML(c, { button: obs.phase === "discard" && myTurn, pressed: current.discard.has(c) })).join("")}</div>
       <div class="jugadas" aria-label="Lo que llevas">${jugadaChips(obs.hand)}</div></div>`}
     <div class="status-line" id="status"></div>
     <div class="actions" id="actions" role="group" aria-label="Acciones disponibles"></div>
+      </div>
+    </div>
+    ${curtain}
     </div>
     <aside class="side side-right" aria-label="Señas">${signalPanel}</aside>
     </div>
@@ -1245,7 +1212,12 @@ function learn() {
       <div class="panel stack"><span class="kicker">Decisiones</span><h2 class="card-title">Situaciones de entrenamiento</h2>
         <p class="muted">Situaciones concretas («vas 35-38, te envidan 4…»). Decide y mira el análisis.</p>
         <button class="btn" data-nav="training">Ver situaciones</button></div>
+      <div class="panel stack"><span class="kicker">Entrenar</span><h2 class="card-title">Contra un bot</h2>
+        <p class="muted">Elige un bot concreto y enfréntate a él tantas veces como quieras.</p>
+        <label class="field">Bot<select id="vs-bot"><option value="sencillo">Fácil (sencillo)</option><option value="medio">Normal (medio)</option><option value="profesional">Difícil (profesional)</option></select></label>
+        <button class="btn" id="vs-start">Jugar contra este bot</button></div>
     </div></div>`));
+  document.getElementById("vs-start").onclick = () => startGame({ mode: "contra_bot", rivals: document.getElementById("vs-bot").value, partner: "sencillo" });
   document.getElementById("learn-play").onclick = () => startGame({ mode: "entrenamiento", rivals: "sencillo", partner: "sencillo" }, { help: true });
 }
 
@@ -1449,14 +1421,29 @@ function loginDialog() {
     } catch (err) { toast(err.message); }
   };
 }
-function accountMenu() {
-  openModal(`<h2 id="modal-title">${esc(user.username)}</h2><div class="row">
-    <button class="btn" id="to-stats">Mis estadísticas</button><button class="btn" id="logout">Salir</button><button class="btn ghost" data-close>Cerrar</button></div>`);
-  document.getElementById("to-stats").onclick = () => { $modal.close(); go("stats"); };
-  document.getElementById("logout").onclick = async () => {
-    if (cloud.cloudEnabled()) await cloud.signOut();
-    await api("/api/auth/logout", { method: "POST" }); user = null; $modal.close(); updateAccount(); go("home");
-  };
+// Perfil: tu cuenta y tus partidas (continuar las que están a medias o ver el replay).
+async function profile() {
+  $main.append(h(`<div class="page stack">
+    <div class="row" style="justify-content:space-between"><h1 class="page-title">${esc(user.username)}</h1>
+      <div class="row"><button class="btn" data-nav="stats">📊 Mis estadísticas</button>${canAdmin() ? '<button class="btn" data-nav="admin">Administración</button>' : ""}<button class="btn ghost" id="logout">Salir</button></div></div>
+    <div class="panel stack"><h2 class="card-title">Partidas a medias</h2><div id="p-open" class="stack muted">Cargando…</div></div>
+    <div class="panel stack"><h2 class="card-title">Tus partidas</h2><div id="p-done" class="stack muted">Cargando…</div></div>
+  </div>`));
+  document.getElementById("logout").onclick = logout;
+  try {
+    const games = await api("/api/history");
+    const row = (g) => `<div class="row game-row"><span>${new Date(g.started_at * 1000).toLocaleString()} · ${esc(g.mode)}${g.score ? ` · ${g.score.join("–")}` : ""}</span>
+      <span>${g.status === "FINISHED" ? `${g.won ? "✔ Victoria" : "✘ Derrota"} <button class="btn ghost" data-replay="${g.id}">▶ Replay</button>` : `<button class="btn primary" data-resume="${g.id}">Continuar</button>`}</span></div>`;
+    const open = games.filter((g) => g.status !== "FINISHED"), done = games.filter((g) => g.status === "FINISHED");
+    document.getElementById("p-open").innerHTML = open.map(row).join("") || "No tienes partidas a medias.";
+    document.getElementById("p-done").innerHTML = done.map(row).join("") || "Aún no has terminado ninguna partida.";
+    document.querySelectorAll("[data-replay]").forEach((b) => (b.onclick = () => openReplay(b.dataset.replay)));
+    document.querySelectorAll("[data-resume]").forEach((b) => (b.onclick = () => resumeGame(b.dataset.resume)));
+  } catch (err) { toast(err.message); }
+}
+async function logout() {
+  if (cloud.cloudEnabled()) await cloud.signOut();
+  await api("/api/auth/logout", { method: "POST" }); user = null; $modal.close?.(); updateAccount(); go("home");
 }
 function updateAccount() {
   document.getElementById("account").textContent = user ? user.username : "Entrar";
