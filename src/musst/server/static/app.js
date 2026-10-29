@@ -804,7 +804,7 @@ function renderGame(bubbles = current?.bubbles || {}) {
     </div>
     <aside class="side side-right" aria-label="Señas">${signalPanel}</aside>
     </div>
-    <div class="row" style="justify-content:center">
+    <div class="row game-tools">
       <button class="btn ghost" id="help-btn" aria-expanded="${current.help}">? ¿Qué puedo hacer?</button>
       ${finished ? '<button class="btn primary" id="summary-btn">Ver resumen</button>' : ""}
       <button class="btn ghost" id="log-btn">Historial de la jugada</button>
