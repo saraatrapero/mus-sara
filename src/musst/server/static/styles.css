@@ -419,7 +419,7 @@ button.link { background: none; border: 0; padding: 0; color: var(--accent); tex
   .drinkbox svg.drink { width: 36px; height: 60px; }
 }
 @media (max-width: 640px) {
-  .table { grid-template-areas: "score score score" ". top ." "left center right" ". bottom ."; }
+  .table { grid-template-areas: "score score score" ". top ." "left center right" ". bottom ." "hand hand hand"; }
   .table > .scorebar { grid-template-columns: 1fr 1fr; border-radius: 14px; padding: 4px 10px; }
   .table > .scorebar .phase-box { grid-column: 1 / -1; grid-row: 1; }
   .table > .scorebar .score-line strong { font-size: 1.2rem; }
@@ -473,3 +473,25 @@ section.panel.stack[aria-label="Campeonatos"], section.panel.stack[aria-label="P
   .topnav::-webkit-scrollbar { display: none; }
   .topnav button { flex: none; }
 }
+
+/* Mis cartas y mis botones, dentro de la mesa como las de los demás */
+.table, .table:has(> .scorebar) { grid-template-areas: "score score score" ". top ." "left center right" ". bottom ." "hand hand hand"; }
+.table-hand { grid-area: hand; display: grid; gap: 8px; justify-items: center; padding-top: 4px; }
+.table-hand .status-line { color: #f3ead7; opacity: .85; }
+.table-hand .jugadas .jugada { border-color: rgb(255 255 255 / .35); }
+
+/* Jugando, el menú de arriba se esconde y aparece al pasar el ratón por el borde superior */
+.nav-hot { display: none; }
+body.playing .nav-hot { display: flex; justify-content: center; position: fixed; top: 0; left: 0; right: 0; height: 14px; z-index: 6; }
+body.playing .nav-hot span { font-size: .7rem; background: var(--surface); border: 1px solid var(--line); border-top: 0; border-radius: 0 0 8px 8px; padding: 0 10px; height: 16px; line-height: 16px; color: var(--muted); }
+body.playing .topbar { position: fixed; left: 0; right: 0; top: 0; transform: translateY(-100%); transition: transform 200ms ease; z-index: 7; box-shadow: var(--shadow); }
+body.playing .nav-hot:hover + .topbar, body.playing .topbar:hover, body.playing .topbar:focus-within { transform: none; }
+body.playing #main { padding-top: 14px; }
+@media (hover: none) { body.playing .nav-hot { height: 22px; } body.playing .nav-hot:active + .topbar { transform: none; } }
+.play-form { margin-bottom: 16px; }
+.seg-field { border: 0; padding: 0; margin: 0; display: grid; gap: 6px; }
+.seg-field legend { font-weight: 600; margin-bottom: 6px; }
+.more summary { cursor: pointer; color: var(--muted); }
+.more .form-grid { margin-top: 10px; }
+.btn.big { font-size: 1.1rem; padding: 12px 24px; justify-self: start; }
+.game-row { justify-content: space-between; border-bottom: 1px solid var(--line); padding: 6px 0; color: inherit; }
