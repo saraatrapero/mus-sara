@@ -29,7 +29,7 @@ from musst.runtime.runner import play_game
 from musst.server import coach
 from musst.server.sessions import BOT_LEVELS, GameSession, Seat, SessionManager
 
-MODES = ("rapida", "personalizada", "entrenamiento", "contra_bot")
+MODES = ("rapida", "personalizada", "entrenamiento", "contra_bot", "campeonato")
 USERNAME = re.compile(r"^[A-Za-z0-9_.\-]{3,32}$")
 MIN_PASSWORD = 8
 

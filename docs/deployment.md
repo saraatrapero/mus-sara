@@ -48,19 +48,58 @@ La primera cuenta que se registra es la administradora y ve el menú **Admin**: 
 (crear, editar, borrar), actividad, resultados contra cada nivel, estilos que detecta la IA y
 autocrítica de los bots.
 
-**Opcional, cuentas compartidas entre dispositivos (Supabase)**:
+### Cuentas compartidas entre dispositivos (Supabase)
 
-1. Crea un proyecto gratuito en https://supabase.com.
-2. *Authentication → Providers → Email*: desactiva **Confirm email** (los usuarios entran con
-   nombre de usuario; el correo es interno).
-3. *SQL Editor*: pega y ejecuta `supabase/schema.sql`.
-4. Regístrate en la web y hazte administradora en el *SQL Editor*:
-   `update public.profiles set role = 'admin' where username = 'TU_USUARIO';`
-5. En GitHub, *Settings → Secrets and variables → Actions → Variables*: crea
-   `SUPABASE_URL` y `SUPABASE_ANON_KEY` (*Project Settings → API*). Son públicas por diseño;
-   **nunca** uses la clave `service_role`.
+Con Supabase las cuentas, los **campeonatos** (con inscripción desde cualquier móvil u ordenador)
+y la **publicidad** de la mesa son los mismos para todo el mundo. Unos 10 minutos:
+
+1. Crea un proyecto gratuito en https://supabase.com (*New project*; apunta la contraseña de la
+   base de datos en un sitio seguro, no hace falta para nada de lo que sigue).
+2. *Authentication → Sign In / Providers → Email*: desactiva **Confirm email** (los usuarios
+   entran con nombre de usuario; el correo es interno).
+3. *SQL Editor → New query*: pega **todo** `supabase/schema.sql` y pulsa **Run**. Es idempotente:
+   cuando el esquema cambie, se vuelve a pegar y ejecutar entero.
+4. En GitHub, *Settings → Secrets and variables → Actions → pestaña Variables → New repository
+   variable*: crea `SUPABASE_URL` y `SUPABASE_ANON_KEY` con los valores de Supabase
+   (*Project Settings → Data API / API Keys*: «Project URL» y la clave **anon public**). Son
+   públicas por diseño; **nunca** uses la clave `service_role`.
+5. En GitHub, *Actions → «Web, documentación (GitHub Pages) y scoreboard» → Run workflow*, para
+   publicar la web con esas variables.
+6. Entra en la web y crea tu cuenta (p. ej. `sara`). Después hazte administradora en el
+   *SQL Editor* de Supabase:
+   `update public.profiles set role = 'admin' where username = 'sara';`
+   Desde entonces puedes hacer administradoras a otras cuentas desde el panel **Admin**.
 
 Sin esas variables la web usa las cuentas del navegador.
+
+### Publicidad en la mesa
+
+En **Admin → Publicidad en la mesa** se elige la marca, el color o el logo del reverso de las
+cartas de los bots, y la consumición (cerveza, refresco, café o agua) que cada jugador tiene al
+lado de sus cartas, con su marca. Se guarda en la tabla `site_settings` y la ve todo el mundo,
+también sin sesión; solo la cambia un administrador (`admin_set_ads` valida colores, textos y que
+los logos sean PNG, JPEG o WebP de 290 KB como mucho). Sin Supabase se guarda en el navegador.
+
+### Campeonatos
+
+Eliminatorias de **8, 16 o 32 parejas** (mínimo 8: cuartos de final, semifinales y final; con
+16, también octavos). Tablas `championships`, `champ_teams` y `champ_matches`; todos los cambios
+pasan por funciones que comprueban quién llama (RLS).
+
+1. La administración crea el campeonato en **Admin → Campeonatos**: nombre, fecha y hora de
+   comienzo, número de parejas, a 30 o a 40 y con o sin señas.
+2. Hasta esa fecha, cada persona se apunta en **Campeonatos** con un nombre de pareja: con un bot
+   de compañero o con una plaza libre para otra persona («Unirme como compañero»).
+3. Al llegar la fecha (o con «Empezar ya»), se sortea el cuadro y las plazas libres se llenan con
+   parejas de bots. Los partidos entre bots se deciden solos.
+4. Cada pareja pulsa **Jugar mi partido** en el cuadro; al terminar, el resultado se apunta solo y
+   el ganador pasa de ronda. En la final los rivales bot son del nivel profesional.
+5. Si se cruzan dos parejas de personas, lo juegan juntas y la administración apunta el resultado
+   («Dar el partido»); lo mismo si una pareja no se presenta.
+
+Límite conocido: como la partida se juega en el navegador (GitHub Pages no tiene servidor), el
+resultado lo envía el navegador de quien juega; una persona con conocimientos técnicos podría
+falsearlo. Para un campeonato con premios de verdad, mejor el servidor (abajo).
 
 ## Alternativa con servidor
 

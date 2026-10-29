@@ -389,8 +389,93 @@ button.link { background: none; border: 0; padding: 0; color: var(--accent); tex
 .play-panel table { width: 100%; table-layout: fixed; }
 .play-panel table.data th { width: 34%; white-space: normal; } .play-panel table.data td { white-space: normal; overflow-wrap: anywhere; text-align: left; }
 
+/* ------------------------------------------------------------------ mesa con publicidad */
+/* El marcador y la fase van arriba, dentro del tapete: gana espacio a la pantalla. */
+.table { grid-template-areas: "score score score" ". top ." "left center right" ". bottom ."; }
+.table > .scorebar {
+  grid-area: score; position: static; z-index: auto; margin: -4px auto 4px; width: min(100%, 760px);
+  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 10px; align-items: center;
+  background: rgb(0 0 0 / .28); border: 1px solid rgb(255 255 255 / .18); border-radius: 999px; padding: 4px 16px; color: #f3ead7;
+}
+.table > .scorebar .score-line { justify-content: flex-start; }
+.table > .scorebar .score-line:last-child { justify-content: flex-end; flex-direction: row-reverse; }
+.table > .scorebar .score-line strong { font-size: 1.5rem; }
+.table > .scorebar .phase-box { display: grid; justify-items: center; gap: 2px; }
+.table > .scorebar .phase-box small { font-size: .7rem; opacity: .85; }
+.table > .scorebar .lance { color: #f3ead7; border-color: rgb(255 255 255 / .3); padding: 1px 8px; }
+.table > .scorebar .lance.current { background: var(--gold); color: #1d2420; border-color: var(--gold); }
+/* Cartas de los bots más grandes, con el reverso del patrocinador */
+.backs.ad { gap: 0; }
+.backs.ad .bcard { width: 46px; height: 69px; filter: drop-shadow(0 2px 3px rgb(0 0 0 / .45)); }
+.backs.ad .bcard + .bcard { margin-left: -12px; }
+/* Consumición junto a las cartas de cada jugador */
+.hand-row { display: flex; align-items: flex-end; justify-content: center; gap: 6px; }
+.drinkbox:empty { display: none; }
+.drinkbox svg.drink { width: 30px; height: 50px; display: block; filter: drop-shadow(0 3px 3px rgb(0 0 0 / .45)); }
+.my-cards .drinkbox svg.drink { width: 40px; height: 66px; }
+@media (min-width: 900px) {
+  .backs.ad .bcard { width: 60px; height: 90px; }
+  .backs.ad .bcard + .bcard { margin-left: -16px; }
+  .drinkbox svg.drink { width: 36px; height: 60px; }
+}
+@media (max-width: 640px) {
+  .table { grid-template-areas: "score score score" ". top ." "left center right" ". bottom ." "hand hand hand"; }
+  .table > .scorebar { grid-template-columns: 1fr 1fr; border-radius: 14px; padding: 4px 10px; }
+  .table > .scorebar .phase-box { grid-column: 1 / -1; grid-row: 1; }
+  .table > .scorebar .score-line strong { font-size: 1.2rem; }
+  .backs.ad .bcard { width: 30px; height: 45px; }
+  .backs.ad .bcard + .bcard { margin-left: -10px; }
+  .drinkbox svg.drink { width: 20px; height: 34px; }
+}
+.deck-top, .deck-right { top: 70px; }
+@media (max-width: 640px) {
+  .deck-top, .deck-right { top: 96px; }
+  .seat.left .hand-row, .seat.right .hand-row { flex-wrap: wrap; max-width: 100%; }
+  .seat.left .backs.ad .bcard, .seat.right .backs.ad .bcard { width: 26px; height: 39px; }
+  .seat.left .backs.ad .bcard + .bcard, .seat.right .backs.ad .bcard + .bcard { margin-left: -9px; }
+}
+@media (min-width: 641px) {
+  .seat.left .backs.ad .bcard, .seat.right .backs.ad .bcard { width: 48px; height: 72px; }
+  .seat.left .backs.ad .bcard + .bcard, .seat.right .backs.ad .bcard + .bcard { margin-left: -26px; }
+  .seat.left .hand-row, .seat.right .hand-row { max-width: 100%; }
+}
+
+/* ------------------------------------------------------------------ publicidad y campeonatos */
+.ad-preview { display: flex; gap: 10px; align-items: flex-end; justify-content: center; padding: 18px; border-radius: 18px;
+  background: radial-gradient(ellipse at center, var(--felt-line), var(--felt) 60%, var(--felt-2)); }
+.ad-preview .bcard.big { width: 96px; height: 144px; filter: drop-shadow(0 3px 4px rgb(0 0 0 / .45)); }
+.ad-preview .drinkbox.big svg.drink { width: 60px; height: 100px; }
+.champ-list { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.champ-card { display: grid; gap: 4px; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.champ-card.inscripcion { box-shadow: inset 4px 0 0 var(--felt); }
+.champ-card.en_juego { box-shadow: inset 4px 0 0 var(--gold); }
+.chip-light { justify-self: start; font-size: .75rem; padding: 1px 8px; border-radius: 999px; background: var(--gold); color: #1d2420; }
+.bracket { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(220px, 1fr); gap: 14px; padding-bottom: 8px; }
+.bracket .round { display: flex; flex-direction: column; justify-content: space-around; gap: 10px; }
+.bracket .round h3 { margin: 0; text-align: center; font-size: 1rem; color: var(--muted); }
+.match { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
+.match.mine { border: 2px solid var(--gold); }
+.match .team-row { display: flex; justify-content: space-between; gap: 6px; padding: 6px 10px; font-size: .9rem; }
+.match .team-row + .team-row { border-top: 1px solid var(--line); }
+.match .team-row.won { font-weight: 700; background: color-mix(in srgb, var(--felt) 14%, transparent); }
+.match .team-row.lost { color: var(--muted); text-decoration: line-through; }
+.match .team-row.me span { color: var(--accent); font-weight: 700; }
+.match .team-row.tbd { color: var(--muted); font-style: italic; }
+.match > .btn, .match > small { display: block; margin: 6px 10px 8px; }
+.match .adm-win { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 4px 10px 8px; }
+.champion { font-size: 1.2rem; text-align: center; background: color-mix(in srgb, var(--gold) 25%, var(--surface)); }
+ul.teams { padding-left: 18px; } ul.teams li { margin: 6px 0; }
+#ads-form input[type="color"] { width: 64px; height: 38px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+section.panel.stack[aria-label="Campeonatos"], section.panel.stack[aria-label="Publicidad"] { align-content: start; align-self: start; }
+/* Con «Campeonatos» el menú no cabe en una fila del móvil: se desplaza dentro de su franja */
+@media (max-width: 760px) {
+  .topnav { overflow-x: auto; justify-content: flex-start; flex-wrap: nowrap; scrollbar-width: none; }
+  .topnav::-webkit-scrollbar { display: none; }
+  .topnav button { flex: none; }
+}
+
 /* Mis cartas y mis botones, dentro de la mesa como las de los demás */
-.table { grid-template-areas: ". top ." "left center right" ". bottom ." "hand hand hand"; }
+.table, .table:has(> .scorebar) { grid-template-areas: "score score score" ". top ." "left center right" ". bottom ." "hand hand hand"; }
 .table-hand { grid-area: hand; display: grid; gap: 8px; justify-items: center; padding-top: 4px; }
 .table-hand .status-line { color: #f3ead7; opacity: .85; }
 .table-hand .jugadas .jugada { border-color: rgb(255 255 255 / .35); }
