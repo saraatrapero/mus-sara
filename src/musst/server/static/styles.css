@@ -612,3 +612,23 @@ body.playing .seat.left .backs.ad .bcard, body.playing .seat.right .backs.ad .bc
   body.playing .seat.left .backs.ad .bcard, body.playing .seat.right .backs.ad .bcard { width: 34px; height: 51px; }
   body.playing .seat.left .backs.ad .bcard + .bcard, body.playing .seat.right .backs.ad .bcard + .bcard { margin-left: -16px; }
 }
+
+/* ------------------------------------------------------------------ bocadillos sin tapar caras */
+/* El bocadillo («Paso», «Envido»…) se coloca respecto a la cara, no al asiento: en la mesa a
+   pantalla completa el asiento puede ser más bajo que su contenido y el bocadillo acababa
+   encima de la cara. En los bots de los lados y el de enfrente va al lado, hacia el centro. */
+.avatar-wrap { position: relative; display: grid; place-items: center; }
+.avatar-wrap > .bubble { animation-name: pop-in; }
+.seat.left .avatar-wrap > .bubble, .seat.top .avatar-wrap > .bubble { top: 50%; left: calc(100% + 10px); transform: translateY(-50%); }
+.seat.right .avatar-wrap > .bubble { top: 50%; left: auto; right: calc(100% + 10px); transform: translateY(-50%); }
+.seat.bottom .avatar-wrap > .bubble { top: -8px; }
+@keyframes pop-in { from { scale: .7; opacity: 0; } to { scale: 1; opacity: 1; } }
+@media (max-width: 760px) {
+  /* En el móvil la mesa crece hacia abajo y hay sitio encima de cada cara. */
+  .seat.left .avatar-wrap > .bubble, .seat.right .avatar-wrap > .bubble { top: -10px; transform: translateY(-100%); }
+  .seat.left .avatar-wrap > .bubble { left: 0; right: auto; }
+  .seat.right .avatar-wrap > .bubble { left: auto; right: 0; }
+}
+/* En pantallas bajas (p. ej. 1280×720) mi cara podía quedar encima de «¿Repartimos? Sí»: los
+   botones del centro siempre por encima. */
+body.playing .center { position: relative; z-index: 4; }
