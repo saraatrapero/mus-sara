@@ -739,7 +739,7 @@ function renderGame(bubbles = current?.bubbles || {}) {
       ? `<button class="avatar face-btn ${obs.gazes[me] === s.seat ? "watched" : ""}" data-look="${s.seat}" aria-label="Mirar a ${esc(s.name)}" title="Mirar a ${esc(s.name)}">${face}</button>`
       : `<div class="avatar" aria-hidden="true">${face}</div>`;
     return `<div class="seat ${pos} ${obs.turn === s.seat && !obs.awaiting_deal ? "turn" : ""} ${lit ? "lit" : ""}" style="--team-color:var(${s.team === 0 ? "--team-a" : "--team-b"})">
-      ${bubble}${avatar}${current.gestures?.[s.seat] ? `<span class="chip sig-now" role="status">${SIGNAL_ICON[current.gestures[s.seat]] ?? "✋"} ${esc(SIGNALS[current.gestures[s.seat]]?.[1] ?? "")}</span>` : ""}
+      <div class="avatar-wrap">${bubble}${avatar}</div>${current.gestures?.[s.seat] ? `<span class="chip sig-now" role="status">${SIGNAL_ICON[current.gestures[s.seat]] ?? "✋"} ${esc(SIGNALS[current.gestures[s.seat]]?.[1] ?? "")}</span>` : ""}
       <div class="seat-name">${esc(s.name)}${s.seat === me ? " (tú)" : ""}${s.level ? ` <span class="chip">${esc(s.level)}</span>` : ""}</div>
       <div class="seat-meta"><span class="chip">${s.team === 0 ? "◆ Pareja A" : "● Pareja B"}</span>${obs.mano === s.seat ? '<span class="chip mano">mano</span>' : ""}${decl("pares")}${decl("juego")}${status}${gaze}</div>
       ${pileHTML(obs, s.seat)}
