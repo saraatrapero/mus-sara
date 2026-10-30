@@ -794,8 +794,8 @@ function renderGame(bubbles = current?.bubbles || {}) {
       ${seatHTML(obs.seats[me])}
       ${finished ? "" : deck}
       <div class="table-hand">
-    ${handoff != null || review ? "" : `<div class="my-cards"><div class="hand-row"><div class="hand" id="my-hand" aria-label="Tus cartas, de mayor a menor">${sortHand(obs.hand).map((c) => cardHTML(c, { button: obs.phase === "discard" && myTurn, pressed: current.discard.has(c) })).join("")}</div><span class="drinkbox">${drinkSVG(ads)}</span></div>
-      <div class="jugadas" aria-label="Lo que llevas">${jugadaChips(obs.hand)}</div></div>`}
+    ${handoff != null || review ? "" : `<div class="my-cards"><div class="hand" id="my-hand" aria-label="Tus cartas, de mayor a menor">${sortHand(obs.hand).map((c) => cardHTML(c, { button: obs.phase === "discard" && myTurn, pressed: current.discard.has(c) })).join("")}</div>
+      <div class="my-extras"><span class="drinkbox">${drinkSVG(ads)}</span><div class="jugadas" aria-label="Lo que llevas">${jugadaChips(obs.hand)}</div></div></div>`}
     <div class="status-line" id="status"></div>
     <div class="actions" id="actions" role="group" aria-label="Acciones disponibles"></div>
       </div>
@@ -1457,6 +1457,14 @@ function updateAccount() {
     admin = document.createElement("button"); admin.dataset.nav = "admin"; admin.textContent = "Admin"; nav.append(admin);
   } else if (!canAdmin() && admin) admin.remove();
 }
+// Explica en cristiano los fallos más habituales al guardar la publicidad en Supabase.
+function adsErrorHint(message) {
+  if (/Solo administradores/i.test(message)) return `${message}. Si te acaban de hacer administradora, sal de tu cuenta y vuelve a entrar.`;
+  if (/admin_set_ads|schema cache|does not exist/i.test(message)) return `${message}. Falta aplicar en Supabase el schema.sql más reciente (SQL Editor).`;
+  if (/JWT|session|token/i.test(message)) return `${message}. La sesión ha caducado: sal y vuelve a entrar.`;
+  if (/payload|too large|413/i.test(message)) return `${message}. El logo pesa demasiado: prueba con una imagen más pequeña.`;
+  return message;
+}
 const canAdmin = () => (cloud.cloudEnabled() ? cloud.isAdmin() : user?.role === "admin");
 // El panel funciona igual con Supabase o con las cuentas del propio navegador / servidor.
 const adminApi = {
@@ -1755,11 +1763,22 @@ async function adminExtras(el) {
   document.getElementById("ads-noimg").onclick = () => { form.card_image = null; form.drink_image = null; f.elements.card_image.value = ""; f.elements.drink_image.value = ""; preview(); };
   f.onsubmit = async (e) => {
     e.preventDefault();
+    // El resultado se queda escrito bajo el botón (un aviso que desaparece se pierde fácilmente).
+    const msg = document.getElementById("ads-msg");
+    const button = f.querySelector("button.primary");
+    button.disabled = true;
+    msg.className = "muted";
+    msg.textContent = "Guardando…";
     try {
       ads = cleanAds(cloud.cloudEnabled() ? await cloud.adminSetAds(form) : form);
       store.set("musst.ads", ads);
+      msg.className = "ok-msg";
+      msg.textContent = `✔ Publicidad guardada (${new Date().toLocaleTimeString()}). Se ve en las mesas nuevas.`;
       toast("Publicidad guardada");
-    } catch (err) { toast(err.message); }
+    } catch (err) {
+      msg.className = "error-msg";
+      msg.textContent = `No se ha podido guardar: ${adsErrorHint(err.message)}`;
+    } finally { button.disabled = false; }
   };
   preview();
   if (!cloud.cloudEnabled()) return;
