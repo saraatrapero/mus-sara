@@ -220,6 +220,13 @@ class MusService:
         if players not in ("bot", "pareja", "cuatro"):
             raise ApiError(422, "Modo de jugadores no válido")
         seats_h = {"bot": (), "pareja": (2,), "cuatro": (1, 2, 3)}[players]
+        # Sala online con huecos libres: solo son personas los asientos que se han ocupado
+        # (los demás los juegan bots).
+        if body.get("human_seats") is not None:
+            chosen = tuple(sorted({int(s) for s in body["human_seats"]}))
+            if not set(chosen) <= set(seats_h):
+                raise ApiError(422, "Asientos de personas no válidos")
+            seats_h = chosen
         local_humans = {s: names.get(str(s)) or f"Jugador {s + 1}" for s in seats_h}
         session, token = self.manager.create(
             mode,

@@ -69,6 +69,7 @@ class NewGame(BaseModel):
     avatar: str | None = Field(default=None, max_length=64)
     signals: bool = True
     players: Literal["bot", "pareja", "cuatro"] = "bot"
+    human_seats: list[int] | None = Field(default=None, max_length=3)
 
 
 class JoinGame(BaseModel):
