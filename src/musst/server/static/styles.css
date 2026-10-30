@@ -555,3 +555,34 @@ body.playing .deck-bottom { bottom: auto; top: 54%; right: 22%; }
 /* Los botones de acción dentro del tapete conservan su texto oscuro (el tapete pone el texto claro) */
 .table .act, .table .amount { color: var(--fg); }
 .table .act.ordago { color: var(--accent-fg); }
+
+/* ------------------------------------------------------------------ mis cartas centradas */
+/* Mis cuatro cartas, siempre en una fila y en el centro de la mesa; la consumición y lo que llevo
+   («Par de…», «Sin juego…») van a un lado sin descentrarlas (en el móvil, debajo). */
+.my-cards { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px; width: 100%; }
+.my-cards > .hand { grid-column: 2; flex-wrap: nowrap; }
+.my-cards > .my-extras { grid-column: 3; justify-self: start; display: flex; align-items: center; gap: 10px; min-width: 0; }
+@media (max-width: 760px) {
+  .my-cards { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .my-cards > .hand, .my-cards > .my-extras { grid-column: 1; justify-self: center; }
+  .my-cards > .hand { gap: 6px; }
+  body.playing .my-cards .card { width: min(21vw, 84px); height: calc(min(21vw, 84px) * 1.5); }
+  .my-cards .jugadas { flex-direction: row; flex-wrap: wrap; justify-content: center; }
+}
+
+/* ------------------------------------------------------------------ nada tapa los botones */
+/* En pantallas estrechas no cabe todo en una pantalla: la mesa crece lo que haga falta en vez de
+   montar unos asientos encima de otros. Y el conteo de la jugada queda siempre por encima, para
+   que «Siguiente» y «Repartir» se puedan pulsar. */
+.table.reviewing .center { position: relative; z-index: 4; background: color-mix(in srgb, var(--felt) 92%, black); }
+@media (max-width: 760px) {
+  body.playing .table { height: auto; min-height: calc(100dvh - 24px); overflow: visible; grid-template-rows: none; }
+  body.playing .center { min-height: 120px; }
+  body.playing .seat.left .backs.ad .bcard, body.playing .seat.right .backs.ad .bcard { width: 26px; height: 39px; }
+  body.playing .seat.left .backs.ad .bcard + .bcard, body.playing .seat.right .backs.ad .bcard + .bcard { margin-left: -12px; }
+  body.playing .seat.left .hand-row, body.playing .seat.right .hand-row { flex-wrap: wrap; }
+}
+
+/* Resultado al guardar la publicidad: se queda escrito bajo el botón. */
+.ok-msg { color: #2e7d32; font-weight: 600; }
+.error-msg { color: #c62828; font-weight: 600; }
