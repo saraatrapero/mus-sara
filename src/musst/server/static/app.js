@@ -101,7 +101,15 @@ async function localApi(path, method, body, token) {
   return reply.data;
 }
 
-async function api(path, { method = "GET", body, token } = {}) {
+async function api(path, opts = {}) {
+  const room = current?.room;
+  const game = current && path.startsWith(`/api/games/${current.id}`);
+  if (room?.guest && game) return roomGuestApi(path.slice(`/api/games/${current.id}`.length).replace(/^\//, ""), opts);
+  const data = await apiCall(path, opts);
+  if (room?.host && game) schedulePublish();
+  return data;
+}
+async function apiCall(path, { method = "GET", body, token } = {}) {
   if (LOCAL) return localApi(path, method, body, token);
   const headers = { "Content-Type": "application/json" };
   if (token) headers["X-Seat-Token"] = token;
@@ -322,7 +330,7 @@ const SOUND_OF = {
 };
 
 // ------------------------------------------------------------------ navegación
-const views = { home, learn, arena, stats, settings: settingsView, game: () => renderGame(), tutorial, training, admin: adminView, champs: champsView, champ: champView, profile };
+const views = { home, learn, arena, stats, settings: settingsView, game: () => renderGame(), tutorial, training, admin: adminView, champs: champsView, champ: champView, profile, room: roomLobby };
 const OPEN_VIEWS = new Set(["learn", "tutorial", "settings"]);
 function loginGate() {
   $main.append(h(`<div class="page"><section class="panel stack login-gate">
@@ -391,8 +399,13 @@ function home() {
             <label class="field">Nombre rival 2<input name="n3" maxlength="24" placeholder="Bot 2"></label>
           </div>
         </details>
-        <button class="btn primary big">Empezar a jugar</button>
+        <p class="muted" id="room-hint" hidden>${cloud.cloudEnabled() ? "Se abre una sala con un código: los demás se unen desde su móvil u ordenador." : "Sin cuentas compartidas (Supabase) se juega pasándose este mismo dispositivo."}</p>
+        <button class="btn primary big" id="start-btn">Empezar a jugar</button>
       </form>
+      ${cloud.cloudEnabled() ? `<form id="join-room" class="join-room">
+        <label class="field">¿Te han pasado un código?<input name="code" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="Código de la sala" required pattern="[A-Za-z0-9]{6}"></label>
+        <button class="btn">Unirme a la sala</button>
+      </form>` : ""}
     </section>
     <section class="panel score-help" aria-label="Cómo se cuentan los tantos">
       <span class="kicker">El conteo</span><h2 class="card-title">Cómo se cuentan los tantos</h2>
@@ -403,9 +416,21 @@ function home() {
   </div>`));
   document.querySelectorAll('input[name="signals"]').forEach((r) => (r.onchange = () => { settings.signals = r.value === "1"; saveSettings(); }));
   document.getElementById("quick").onclick = () => startGame({ mode: "rapida", rivals: "medio", partner: "sencillo" });
+  const syncPlayers = () => {
+    const many = document.querySelector('input[name="players"]:checked').value !== "bot";
+    document.getElementById("room-hint").hidden = !many;
+    document.getElementById("start-btn").textContent = many && cloud.cloudEnabled() ? "Crear sala" : "Empezar a jugar";
+  };
+  document.querySelectorAll('input[name="players"]').forEach((r) => (r.onchange = syncPlayers));
+  const joinForm = document.getElementById("join-room");
+  if (joinForm) joinForm.onsubmit = (e) => { e.preventDefault(); joinRoom(new FormData(joinForm).get("code")); };
   document.getElementById("custom").onsubmit = (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
+    if (f.get("players") !== "bot" && cloud.cloudEnabled()) {
+      createRoom(f.get("players"), { rivals: f.get("rivals"), target: Number(f.get("target")), signals: settings.signals !== false });
+      return;
+    }
     const names = {};
     if (f.get("n1")) names["1"] = f.get("n1");
     if (f.get("n3")) names["3"] = f.get("n3");
@@ -1421,7 +1446,7 @@ function loginDialog() {
       $modal.close();
       await loadUser();
       toast(kind === "register" ? (canAdmin() ? "Cuenta creada: eres administrador/a" : "Cuenta creada") : `Hola, ${user ? user.username : ""}`);
-      go("home");
+      if (pendingRoom) { const code = pendingRoom; pendingRoom = null; joinRoom(code); } else go("home");
     } catch (err) { toast(err.message); }
   };
 }
@@ -1486,7 +1511,7 @@ async function attachCloudProfile(prof) {
 }
 const synced = new Set();
 async function syncFinishedGame(gameId) {
-  if (synced.has(gameId)) return;
+  if (synced.has(gameId) || current?.room?.guest) return;
   synced.add(gameId);
   if (!LOCAL || !cloud.cloudEnabled() || !cloud.cloudProfile() || !user) return;
   try {
@@ -1499,6 +1524,186 @@ async function loadUser() {
   try { user = await api("/api/me"); } catch { user = null; }
   if (user && user.settings && Object.keys(user.settings).length) { settings = { ...settings, ...user.settings }; applySettings(); }
   updateAccount();
+}
+
+// ------------------------------------------------------------------ SALAS ONLINE
+// «Dos personas» o «Cuatro personas» en dispositivos distintos. Quien crea la sala recibe un
+// código; los demás se unen con él (o con el enlace #sala/CÓDIGO). La partida corre en el
+// navegador de la anfitriona: después de cada cambio publica a cada persona solo lo que ve su
+// asiento, y recoge y aplica lo que hacen los demás. Los huecos que nadie ocupa los juegan bots.
+const ROOM_SEATS = { pareja: [2], cuatro: [2, 1, 3] };  // primero el compañero, luego los rivales
+const ROOM_PATHS = new Set(["action", "deal", "look", "signal"]);
+const SEAT_ROLE = { 0: "Quien crea la sala", 2: "Compañero/a (enfrente)", 1: "Rival (a la derecha)", 3: "Rival (a la izquierda)" };
+const roomLink = (code) => `${location.origin}${location.pathname}#sala/${code}`;
+let pendingRoom = null;
+let roomLoop = 0;
+
+async function createRoom(players, roomSettings) {
+  try { go("room", await cloud.roomCreate(players, roomSettings)); } catch (err) { toast(err.message); }
+}
+async function joinRoom(code) {
+  code = String(code || "").trim().toUpperCase();
+  if (!user) { pendingRoom = code; loginDialog(); return; }
+  try { await cloud.roomJoin(code); go("room", code); } catch (err) { toast(err.message); }
+}
+
+// Sala de espera: código, enlace y quién se ha sentado ya (se refresca sola).
+function roomLobby(code) {
+  $main.append(h('<div class="page stack" id="room">Cargando…</div>'));
+  const loop = ++roomLoop;
+  const refresh = async () => {
+    const el = document.getElementById("room");
+    if (!el || loop !== roomLoop) return;
+    let r;
+    try { r = await cloud.room(code); } catch (err) { el.textContent = err.message; return; }
+    if (!document.getElementById("room") || loop !== roomLoop) return;
+    if (!r) {
+      el.innerHTML = '<section class="panel stack"><h1 class="page-title">Esta sala ya no existe</h1><p>Quien la creó la ha cerrado.</p><div><button class="btn primary" data-nav="home">Volver</button></div></section>';
+      return;
+    }
+    const host = r.host === myId();
+    if (r.status === "jugando" && !host) {
+      try { await enterRoomAsGuest(code); return; } catch { /* aún no ha publicado: se reintenta */ }
+    }
+    const order = [0, ...ROOM_SEATS[r.players]];
+    const guests = ROOM_SEATS[r.players].filter((s) => r.seats[s]).length;
+    el.innerHTML = `<section class="panel stack room">
+      <span class="kicker">Sala ${r.players === "pareja" ? "de dos personas" : "de cuatro personas"}</span>
+      <h1 class="page-title">Código de la sala</h1>
+      <p class="room-code" aria-label="Código ${[...code].join(" ")}">${code}</p>
+      <p>Pásale el código a ${r.players === "pareja" ? "tu compañero/a" : "los demás"}: en la web, en «Jugar», escriben el código en «Unirme a la sala». O mándales el enlace:</p>
+      <div class="row"><input class="room-link" readonly value="${esc(roomLink(code))}" aria-label="Enlace de la sala"><button class="btn" id="room-copy">Copiar enlace</button>${navigator.share ? '<button class="btn" id="room-share">Compartir</button>' : ""}</div>
+      <ul class="room-seats">${order.map((s) => `<li class="${r.seats[s] ? "taken" : "free"}"><span class="muted">${SEAT_ROLE[s]}</span>
+        <strong>${r.seats[s] ? `👤 ${esc(r.seats[s].name)}${r.seats[s].id === myId() ? " (tú)" : ""}` : "⏳ Esperando…"}</strong></li>`).join("")}</ul>
+      ${r.status === "esperando"
+        ? host
+          ? `<p class="muted">${!guests ? "Cuando se una alguien, podrás empezar." : guests === ROOM_SEATS[r.players].length ? "¡Ya estáis todos!" : "Puedes empezar ya: los asientos vacíos los juega un bot."}</p>
+             <div class="row"><button class="btn primary" id="room-start" ${guests ? "" : "disabled"}>Empezar la partida</button><button class="btn ghost" id="room-close">Cerrar la sala</button></div>`
+          : `<p>Esperando a que <strong>${esc(r.seats[0]?.name ?? "quien creó la sala")}</strong> empiece la partida…</p>
+             <div class="row"><button class="btn ghost" id="room-leave">Salir de la sala</button></div>`
+        : r.status === "terminada" ? '<p>Esta partida ya ha terminado.</p><div><button class="btn primary" data-nav="home">Volver</button></div>'
+        : "<p>La partida está empezando…</p>"}
+    </section>`;
+    const on = (id, fn) => { const b = document.getElementById(id); if (b) b.onclick = fn; };
+    on("room-copy", async () => { try { await navigator.clipboard.writeText(roomLink(code)); toast("Enlace copiado"); } catch { el.querySelector(".room-link").select(); } });
+    on("room-share", () => navigator.share({ title: "MUS.ST", text: `Únete a mi partida de mus. Código: ${code}`, url: roomLink(code) }).catch(() => {}));
+    on("room-start", async (e) => { e.target.disabled = true; roomLoop += 1; try { await startRoom(r); } catch (err) { toast(err.message); go("room", code); } });
+    on("room-close", async () => { roomLoop += 1; try { await cloud.roomLeave(code); } catch { /* ya no existe */ } go("home"); });
+    on("room-leave", async () => { roomLoop += 1; try { await cloud.roomLeave(code); } catch (err) { toast(err.message); } go("home"); });
+    if (r.status !== "terminada") setTimeout(refresh, 2000);
+  };
+  refresh();
+}
+
+// Anfitriona: crea la partida en su navegador con una persona en cada asiento ocupado.
+async function startRoom(r) {
+  const humans = Object.keys(r.seats).map(Number).filter((s) => s !== 0);
+  const st = r.settings || {};
+  const data = await api("/api/games", { method: "POST", body: {
+    mode: "personalizada", players: r.players, human_seats: humans, rivals: st.rivals || "medio", partner: st.rivals || "medio",
+    target: st.target || 40, signals: st.signals !== false, name: user?.username || "Tú",
+    names: Object.fromEntries(humans.map((s) => [String(s), r.seats[s].name])),
+  } });
+  const tokens = Object.fromEntries(humans.map((s) => [String(s), data.seat_tokens[String(s)]]));
+  current = {
+    id: data.game_id, token: data.seat_token, tokens: {}, obs: data.observation, seen: maxSeq(data.observation),
+    help: false, discard: new Set(), amount: 2, busy: false, bubbles: {}, gestures: {}, champ: null,
+    room: { code: r.code, host: true, tokens },
+  };
+  store.set("musst.current", { id: current.id, token: current.token, tokens: {}, room: current.room });
+  await publishRoom();
+  await cloud.roomSetStatus(r.code, "jugando");
+  play("deal");
+  go("game");
+  startRoomHost();
+}
+
+// Lo que ve cada persona se publica solo si ha cambiado desde la última vez.
+let publishTimer;
+let publishing = Promise.resolve();
+const published = {};
+function schedulePublish() { clearTimeout(publishTimer); publishTimer = setTimeout(publishRoom, 120); }
+function publishRoom() {
+  const room = current?.room;
+  if (!room?.host) return publishing;
+  const id = current.id;
+  publishing = publishing.then(async () => {
+    for (const [seat, token] of Object.entries(room.tokens)) {
+      const obs = await apiCall(`/api/games/${id}`, { token });
+      const text = JSON.stringify(obs);
+      if (published[`${room.code}/${seat}`] === text) continue;
+      await cloud.roomPublish(room.code, Number(seat), obs);
+      published[`${room.code}/${seat}`] = text;
+      if (obs.finished && !room.finished) {
+        room.finished = true;
+        await cloud.roomSetStatus(room.code, "terminada").catch(() => {});
+      }
+    }
+  }).catch(() => { /* se reintenta en el próximo cambio */ });
+  return publishing;
+}
+
+// Anfitriona: cada segundo recoge lo que han hecho los demás y lo aplica en su asiento.
+let roomHostTimer;
+function startRoomHost() {
+  clearTimeout(roomHostTimer);
+  const code = current?.room?.code;
+  const step = async () => {
+    if (current?.room?.code !== code || !current.room.host || current.room.finished) return;
+    try { await processRoomActions(); } catch { /* sin conexión: se reintenta */ }
+    roomHostTimer = setTimeout(step, 1000);
+  };
+  step();
+}
+async function processRoomActions() {
+  const room = current.room;
+  const pending = await cloud.roomPending(room.code);
+  if (!pending.length) return;
+  for (const a of pending) {
+    const token = room.tokens[String(a.seat)];
+    const path = a.action?.path;
+    let error = null;
+    if (!token || !ROOM_PATHS.has(path)) error = "Acción no válida";
+    else {
+      try { await apiCall(`/api/games/${current.id}/${path}`, { method: "POST", body: a.action.body || {}, token }); } catch (err) { error = err.message; }
+    }
+    await publishRoom();
+    await cloud.roomDone(a.id, error);
+  }
+  try { await animateTo(await apiCall(`/api/games/${current.id}`, { token: current.token })); } catch { /* la vista se actualiza en el próximo sondeo */ }
+}
+
+// Invitado: su mesa es la vista que publica la anfitriona.
+async function enterRoomAsGuest(code) {
+  const view = await cloud.roomView(code);
+  if (!view) throw new Error("La partida aún no ha empezado");
+  current = {
+    id: `sala-${code}`, token: null, tokens: {}, obs: view.obs, seen: maxSeq(view.obs), help: false, discard: new Set(),
+    amount: 2, busy: false, bubbles: {}, gestures: {}, champ: null, room: { code, guest: true },
+  };
+  store.set("musst.current", { id: current.id, room: current.room });
+  play("deal");
+  go("game");
+}
+async function roomGuestApi(sub, { method = "GET", body } = {}) {
+  const { code } = current.room;
+  const latest = async () => {
+    const view = await cloud.roomView(code);
+    if (!view) throw new Error("La sala se ha cerrado");
+    return view.obs;
+  };
+  if (sub === "" || sub === "tick") return latest();
+  if (!ROOM_PATHS.has(sub) || method !== "POST") throw new Error("No disponible en las partidas de sala");
+  const id = await cloud.roomSend(code, { path: sub, body: body || {} });
+  for (let i = 0; i < 40; i += 1) {
+    await new Promise((r) => setTimeout(r, 400));
+    const state = await cloud.roomAction(id);
+    if (state?.done) {
+      if (state.error) throw new Error(state.error);
+      return latest();
+    }
+  }
+  throw new Error("Quien creó la sala no responde: ¿sigue con la partida abierta?");
 }
 
 // ------------------------------------------------------------------ CAMPEONATOS
@@ -1928,13 +2133,23 @@ async function boot() {
       return;
     } catch (err) { toast(err.message); }
   }
+  const sala = location.hash.match(/^#sala\/([A-Za-z0-9]{6})$/);
+  if (sala) {
+    history.replaceState(null, "", location.pathname);
+    if (user) { joinRoom(sala[1]); return; }
+    pendingRoom = sala[1];
+  }
   const saved = store.get("musst.current", null);
+  if (saved?.room?.guest) {
+    try { await enterRoomAsGuest(saved.room.code); return; } catch { store.set("musst.current", null); }
+  }
   if (saved && saved.id) {
     try {
       const obs = await api(`/api/games/${saved.id}`, { token: saved.token });
       if (!obs.finished) {
         current = { ...saved, obs, seen: maxSeq(obs), help: false, discard: new Set(), amount: 2, busy: false };
         go("game");
+        if (current.room?.host) startRoomHost();
         return;
       }
     } catch { store.set("musst.current", null); }

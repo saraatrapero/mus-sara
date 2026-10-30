@@ -586,3 +586,29 @@ body.playing .deck-bottom { bottom: auto; top: 54%; right: 22%; }
 /* Resultado al guardar la publicidad: se queda escrito bajo el botón. */
 .ok-msg { color: #2e7d32; font-weight: 600; }
 .error-msg { color: #c62828; font-weight: 600; }
+
+/* ------------------------------------------------------------------ salas online */
+.room { max-width: 640px; margin-inline: auto; }
+.room-code { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size: clamp(2.4rem, 11vw, 3.6rem); font-weight: 800;
+  letter-spacing: .25em; text-align: center; margin: 4px 0; padding: 10px 0 10px .25em; border: 3px dashed var(--gold); border-radius: 14px; background: color-mix(in srgb, var(--gold) 10%, transparent); }
+.room-link { flex: 1 1 220px; min-width: 0; padding: 10px 12px; border-radius: 10px; border: 1px solid color-mix(in srgb, currentColor 25%, transparent); font: inherit; background: transparent; color: inherit; }
+.room-seats { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.room-seats li { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 14px; border-radius: 12px;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent); }
+.room-seats li.taken { border-color: var(--gold); }
+.room-seats li.free strong { opacity: .6; font-weight: 500; }
+.join-room { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; margin-top: 14px; padding-top: 14px; border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
+.join-room .field { flex: 1 1 200px; }
+.join-room input { text-transform: uppercase; letter-spacing: .15em; }
+
+/* ------------------------------------------------------------------ bots más grandes */
+/* Caras y cartas de los otros tres jugadores, un poco mayores (también en el móvil). */
+body.playing .seat .avatar { width: clamp(46px, 8vh, 78px); height: clamp(46px, 8vh, 78px); }
+body.playing .backs.ad .bcard,
+body.playing .seat.left .backs.ad .bcard, body.playing .seat.right .backs.ad .bcard { height: clamp(40px, 9vh, 92px); width: calc(clamp(40px, 9vh, 92px) * 2 / 3); }
+@media (max-width: 760px) {
+  body.playing .seat .avatar { width: 62px; height: 62px; }
+  body.playing .seat.top .backs.ad .bcard { width: 40px; height: 60px; }
+  body.playing .seat.left .backs.ad .bcard, body.playing .seat.right .backs.ad .bcard { width: 34px; height: 51px; }
+  body.playing .seat.left .backs.ad .bcard + .bcard, body.playing .seat.right .backs.ad .bcard + .bcard { margin-left: -16px; }
+}
