@@ -30,6 +30,7 @@ nav:
   - API de bots (tutorial): bot-api.md
   - Referencia del API: api-reference.md
   - Agentes de IA: agents.md
+  - Motor probabilístico: probabilidad.md
   - PlayerModel: player-model.md
   - Testing y experimentos: testing.md
   - Despliegue: deployment.md

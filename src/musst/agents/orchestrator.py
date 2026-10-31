@@ -7,6 +7,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from musst.agents.base import Agent, AgentContext, Decision
+from musst.agents.mathematical import (
+    BayesianAgent,
+    DecisionEvaluatorAgent,
+    MathAnalystAgent,
+    MathJudge,
+    MathProbabilityAgent,
+)
 from musst.agents.specialists import (
     BehaviourAgent,
     BluffAgent,
@@ -71,6 +78,12 @@ class LevelConfig:
     """Frecuencia de farol deliberado cuando la mano no da para envidar."""
     ordago_sure: float = 0.8
     """P(ganar si lo quieren) a partir de la cual echa órdago sin estar desesperado."""
+    math: str = ""
+    """Motor probabilístico (``musst.probability``): ``""`` ninguno (niveles de siempre);
+    ``analitica``/``mc``/``bayes`` sustituyen al agente de probabilidad y mantienen la
+    estrategia y el juez de siempre; ``utilidad`` y ``completo`` deciden por valor esperado
+    de P(ganar la partida) con el juez matemático (``completo`` usa además Bayes con las
+    acciones observadas y el PlayerModel)."""
     extra: dict[str, Any] = field(default_factory=dict)
 
 
@@ -108,6 +121,45 @@ LEVELS: dict[str, LevelConfig] = {
     ),
 }
 
+
+def _math_level(name: str, agents: tuple[str, ...], math: str, learn: bool = False) -> LevelConfig:
+    """Variantes del motor probabilístico: mismas decisiones de mus y descarte que el
+    profesional; cambia solo cómo se calculan las probabilidades y cómo se decide."""
+    return LevelConfig(
+        name,
+        agents,
+        samples=200,
+        samples_deep=600,
+        risk_aversion=0.25,
+        noise=0.0,
+        learn=learn,
+        discard_draws=30,
+        bluff_rate=0.07,
+        math=math,
+    )
+
+
+_PRO_AGENTS = ("cartas", "comportamiento", "probabilidad", "farol", "marcador", "pareja")
+# Variantes del experimento académico (docs/probabilidad.md).
+LEVELS.update(
+    {
+        # B: marginales exactas (hipergeométrica) combinadas con independencia.
+        "mat_exacto": _math_level("mat_exacto", _PRO_AGENTS, "analitica"),
+        # C: Monte Carlo exacto + Bayes con las acciones observadas.
+        "mat_bayes": _math_level("mat_bayes", _PRO_AGENTS, "bayes"),
+        # D: Monte Carlo exacto, sin usar las acciones observadas.
+        "mat_mc": _math_level("mat_mc", _PRO_AGENTS, "mc"),
+        # E: Monte Carlo + valor esperado de P(ganar la partida), sin Bayes.
+        "mat_utilidad": _math_level(
+            "mat_utilidad", ("bayesiano", "analista", "evaluador"), "utilidad"
+        ),
+        # F: completo: PlayerModel + Bayes + Monte Carlo + utilidad esperada + juez matemático.
+        "matematico": _math_level(
+            "matematico", ("comportamiento", "bayesiano", "analista", "evaluador"), "completo", True
+        ),
+    }
+)
+
 AGENT_FACTORIES: dict[str, type[Agent]] = {
     "cartas": CardAgent,
     "conteo": CountingAgent,
@@ -116,6 +168,9 @@ AGENT_FACTORIES: dict[str, type[Agent]] = {
     "farol": BluffAgent,
     "marcador": ScoreAgent,
     "pareja": PartnerAgent,
+    "bayesiano": BayesianAgent,
+    "analista": MathAnalystAgent,
+    "evaluador": DecisionEvaluatorAgent,
 }
 
 
@@ -125,6 +180,11 @@ class Orchestrator:
     def __init__(self, level: LevelConfig) -> None:
         self.level = level
         self.agents = {name: AGENT_FACTORIES[name]() for name in level.agents}
+        if level.math in ("analitica", "mc", "bayes"):
+            self.agents["probabilidad"] = MathProbabilityAgent(level.math)
+        if level.math in ("utilidad", "completo"):
+            self.agents["bayesiano"] = BayesianAgent(use_evidence=level.math == "completo")
+        self.math_judge = MathJudge()
         self.strategy = StrategyAgent()
         self.judge = Judge(level.risk_aversion, level.noise)
         self.planner = MusPlanner(level.cut_threshold, level.discard_draws)
@@ -150,6 +210,8 @@ class Orchestrator:
             if name == "farol" and obs.current_bet is None:
                 continue  # solo tiene sentido ante un envite rival
             ctx.reports[name] = self.agents[name].analyze(ctx)
+        if self.level.math in ("utilidad", "completo"):
+            return self.math_judge.decide(ctx, ctx.shared.get("values", []))
         candidates = self.strategy.candidates(ctx)
         return self.judge.decide(ctx, candidates)
 
@@ -277,6 +339,15 @@ class MediumBot(AgentBot):
 
     def __init__(self, seed: int | None = None) -> None:
         super().__init__("medio", seed)
+
+
+class MathBot(AgentBot):
+    """Nivel MATEMÁTICO: Bayes + Monte Carlo exacto + valor esperado de P(ganar la partida)."""
+
+    def __init__(
+        self, seed: int | None = None, learner: Learner | None = None, learn_opponents: bool = True
+    ) -> None:
+        super().__init__("matematico", seed, learner, learn_opponents)
 
 
 class ProBot(AgentBot):
