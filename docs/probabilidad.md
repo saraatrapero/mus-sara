@@ -286,13 +286,18 @@ python -m experiments.probability partidas 200
 
 | Variante | Nivel | % victorias [IC95 Wilson] | Δ tantos/partida [IC95] | Brier (± SE) | Log-loss (± SE) | ms/decisión (p95) |
 |---|---|---|---|---|---|---|
-| A_medio | `medio` | 48,0 [43,1-52,9] | −0,91 [−2,52, +0,71] | 0,176 (± 0,002) | 0,529 (± 0,006) | 7 (15) |
-| A_pro | `profesional` | **54,7** [49,9-59,6] | +1,77 [+0,09, +3,44] | 0,174 (± 0,002) | 0,519 (± 0,005) | 40 (125) |
-| B | `mat_exacto` | 40,3 [35,6-45,1] | +0,40 [−1,19, +1,98] | 0,194 (± 0,002) | 0,570 (± 0,005) | 44 (83) |
-| C | `mat_bayes` | 49,7 [44,9-54,6] | −1,71 [−3,49, +0,07] | 0,139 (± 0,003) | 0,432 (± 0,007) | 76 (250) |
-| D | `mat_mc` | 37,0 [32,4-41,8] | −3,49 [−5,19, −1,79] | 0,191 (± 0,002) | 0,564 (± 0,006) | 36 (130) |
-| E | `mat_utilidad` | 28,0 [23,8-32,6] | −6,26 [−8,40, −4,11] | 0,197 (± 0,003) | 0,580 (± 0,009) | 86 (212) |
-| F | `matematico` | 44,3 [39,5-49,1] | −3,89 [−6,18, −1,60] | **0,133** (± 0,003) | **0,414** (± 0,007) | 150 (397) |
+| A_medio | `medio` | 48,0 [43,1-52,9] | −0,91 [−2,52, +0,71] | 0,176 (± 0,002) | 0,529 (± 0,006) | 9 (25) |
+| A_pro | `profesional` | **54,8** [49,9-59,6] | +1,77 [+0,09, +3,44] | 0,174 (± 0,002) | 0,519 (± 0,004) | 40 (125) |
+| B | `mat_exacto` | 40,2 [35,6-45,1] | +0,40 [−1,19, +1,98] | 0,194 (± 0,002) | 0,570 (± 0,005) | 42 (70) |
+| C | `mat_bayes` | 49,8 [44,9-54,6] | −1,71 [−3,49, +0,07] | 0,139 (± 0,002) | 0,432 (± 0,007) | 74 (249) |
+| D | `mat_mc` | 37,0 [32,4-41,8] | −3,49 [−5,19, −1,79] | 0,191 (± 0,002) | 0,564 (± 0,006) | 35 (126) |
+| E | `mat_utilidad` | 28,0 [23,8-32,6] | −6,26 [−8,40, −4,11] | 0,197 (± 0,003) | 0,580 (± 0,009) | 90 (223) |
+| F | `matematico` | 44,2 [39,5-49,1] | −3,89 [−6,18, −1,60] | **0,132** (± 0,003) | **0,414** (± 0,007) | 148 (390) |
+
+Ningún bot falló en las 2800 partidas (ni excepciones, ni jugadas ilegales, ni tiempos
+excedidos). Una ejecución anterior encontró un fallo (un `KeyError` cuando un reparto resultaba
+imposible a mitad de muestreo, en 1 partida de E y 1 de F); se corrigió, tiene prueba de
+regresión y esta tabla es la de después del arreglo.
 
 Diferencia de % de victorias frente a A_pro (pareada por semilla):
 
@@ -308,7 +313,7 @@ Diferencia de % de victorias frente a A_pro (pareada por semilla):
 ### 10.3 Interpretación
 
 1. **Las probabilidades del motor nuevo son mejores.** Con Bayes (C y F) la P(ganar el lance)
-   está mucho mejor calibrada que en el bot actual: Brier 0,133-0,139 frente a 0,174, y
+   está mucho mejor calibrada que en el bot actual: Brier 0,132-0,139 frente a 0,174, y
    log-loss 0,41-0,43 frente a 0,52. Las diferencias son de unos 12 errores estándar.
 2. **Mejores probabilidades no bastan para ganar más partidas.** Ninguna variante nueva supera
    al profesional actual frente a este rival. C (probabilidades nuevas con la estrategia de
@@ -332,7 +337,7 @@ Diferencia de % de victorias frente a A_pro (pareada por semilla):
      Ante un órdago rival, P(gano) a posteriori 0,14 frente a 0,10 real (a priori, 0,51).
    * Con estas reglas F apenas echa órdagos y pierde la fuente de tantos de los faroles; el
      resultado final es el de la tabla 10.2.
-5. **Coste.** F tarda 150 ms de media por decisión (p95 ≈ 0,4 s) en CPython, frente a
+5. **Coste.** F tarda 148 ms de media por decisión (p95 0,39 s) en CPython, frente a
    40 ms del profesional. Es usable en la web (Pyodide es más lento, del orden de 2-3×), pero
    no es gratis.
 
