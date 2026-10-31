@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import random
-from collections.abc import Sequence
 
 from musst.agents.base import AgentContext, Decision, ScoredAction
 from musst.agents.specialists import current_lance_bets
 from musst.bots.toolkit import (
     discard_options,
-    hand_strength,
+    hand_value,
     keep_heuristic_discard,
     sample_world,
     unseen_cards,
@@ -53,19 +52,6 @@ RAISE_ESCALATION_DECAY = 0.4
 """Cada envite rival adicional multiplica su probabilidad de retirarse por este factor."""
 RESPONSE_ORDAGO_ACCEPT = 0.4
 """Probabilidad mínima de que quien envidó acepte un órdago como respuesta."""
-
-LANCE_WEIGHTS = {"grande": 0.3, "chica": 0.15, "pares": 0.3, "juego": 0.35, "punto": 0.05}
-
-
-def hand_value(hand: Sequence[Card]) -> float:
-    """Valor global de una mano para decidir mus y descartes."""
-    juego = total_points(hand) >= 31
-    value = sum(
-        w * hand_strength(hand, lance)
-        for lance, w in LANCE_WEIGHTS.items()
-        if lance != ("punto" if juego else "juego")
-    )
-    return value
 
 
 class StrategyAgent:

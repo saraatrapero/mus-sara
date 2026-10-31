@@ -24,6 +24,7 @@ class BotEntry:
 
 
 def builtin_entries() -> list[BotEntry]:
+    from musst.bots.builtin.math import MathBot
     from musst.bots.builtin.medium import MediumBot
     from musst.bots.builtin.pro import ProBot
     from musst.bots.builtin.simple import RandomBot, SimpleBot
@@ -43,6 +44,14 @@ def builtin_entries() -> list[BotEntry]:
             "profesional",
             ProBot,
             description="Multiagente + modelo de jugador",
+        ),
+        BotEntry(
+            "matematico",
+            "MUS.ST",
+            "1.0",
+            "matematico",
+            MathBot,
+            description="Bayes + Monte Carlo exacto + valor esperado de P(ganar la partida)",
         ),
     ]
 
