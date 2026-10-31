@@ -28,6 +28,7 @@ from musst.probability.bayes import (
     Evidence,
     SeatBehaviour,
     evidence_from,
+    logit,
 )
 from musst.probability.decision import ActionValue, DecisionModel, best_action, label
 from musst.probability.equity import win_probability
@@ -42,8 +43,9 @@ from musst.probability.sampler import WorldSampler, constraints_from
 
 BATCH = 100
 TOLERANCE = 0.025
-"""Criterio de convergencia: error estándar de P(ganar el lance actual) ≤ 0.025."""
-AGGRESSION_THRESHOLD_SHIFT = 0.8
+"""Criterio de convergencia: error estándar de P(ganar el lance actual) ≤ 0.025…"""
+MIN_ESS = 30.0
+"""…y tamaño efectivo de muestra a posteriori ≥ 30 (con menos, el propio SE no es fiable)."""
 
 
 @dataclass
@@ -64,21 +66,18 @@ class Belief:
 
 
 def behaviour_from(ctx: AgentContext) -> BehaviourModel:
-    """Parámetros del modelo de decisiones de cada rival, aprendidos por el PlayerModel
-    (agente de comportamiento) si se ha consultado; si no, los valores a priori."""
+    """Ajusta el modelo de decisiones a cada rival con lo que ha aprendido el PlayerModel
+    (agente de comportamiento): desplaza el intercepto logit de «envida» según su agresividad y
+    el de «quiere» según su tasa de aceptación, en proporción a la confianza de la estimación."""
     seats: dict[int, SeatBehaviour] = {}
     if "comportamiento" not in ctx.reports:
         return BehaviourModel(seats)
     for seat in ctx.obs.opponents:
-        bluff = ctx.estimate("comportamiento", f"bluff_frequency_{seat}", PRIORS["bluff_frequency"])
         aggr = ctx.estimate("comportamiento", f"aggression_{seat}", PRIORS["aggression"])
         acc = ctx.estimate("comportamiento", f"acceptance_rate_{seat}", PRIORS["acceptance_rate"])
-        shift = (aggr.value - PRIORS["aggression"]) * AGGRESSION_THRESHOLD_SHIFT * aggr.confidence
-        accept_tau = 0.55 - 0.6 * (acc.value - PRIORS["acceptance_rate"]) * acc.confidence
         seats[seat] = SeatBehaviour(
-            bluff=bluff.value,
-            bet_threshold=max(0.35, min(0.9, 0.7 - shift)),
-            accept_threshold=max(0.3, min(0.85, accept_tau)),
+            envida_shift=(logit(aggr.value) - logit(PRIORS["aggression"])) * aggr.confidence,
+            quiere_shift=(logit(acc.value) - logit(PRIORS["acceptance_rate"])) * acc.confidence,
         )
     return BehaviourModel(seats)
 
@@ -129,7 +128,7 @@ class BayesianAgent(Agent):
                 )
             est = weighted_proportion(_win_indicator(ctx, worlds), post, Method.POSTERIOR)
             se = est.se
-            if len(worlds) >= n_min and se <= TOLERANCE:
+            if len(worlds) >= n_min and se <= TOLERANCE and est.ess >= MIN_ESS:
                 converged = True
                 break
         method = Method.POSTERIOR if evidence else Method.MONTE_CARLO

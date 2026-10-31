@@ -145,3 +145,13 @@ def test_wilson_y_tamano_efectivo():
     assert effective_sample_size([1.0, 0.0, 0.0]) == pytest.approx(1)
     est = weighted_proportion([1, 0, 1, 1], [1, 1, 1, 1], Method.MONTE_CARLO)
     assert est.value == 0.75 and est.se == pytest.approx((0.75 * 0.25 / 4) ** 0.5)
+
+
+def test_un_reparto_imposible_sale_completo_y_con_peso_cero():
+    # Regresión: con 16 cartas bajas nadie puede tener juego (máximo 7+7+6+6 = 26).
+    low = tuple(c for c in POOL if c.rank in (4, 5, 6, 7))[:12]
+    sampler = WorldSampler(0, MINE, low, {1: SeatConstraint(juego=True)})
+    s = sampler.sample(random.Random(0))
+    assert s.weight == 0.0
+    assert set(s.world) == {0, 1, 2, 3}
+    assert all(len(h) == 4 for h in s.world.values())

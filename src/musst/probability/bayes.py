@@ -28,28 +28,35 @@ from collections.abc import Callable, Hashable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TypeVar
 
-from musst.agents.specialists import action_likelihood, bet_likelihood, discard_weight
+from musst.agents.specialists import discard_weight
 from musst.bots.toolkit import hand_strength, hand_value
 from musst.engine.cards import Card
 from musst.engine.observation import Observation
-from musst.learning.player_model import PRIORS
+from musst.probability.behaviour_data import FITS
 from musst.probability.sampler import World
 
 K = TypeVar("K", bound=Hashable)
 
-LIKELIHOOD_FLOOR = 0.05
-"""Ninguna acción tiene probabilidad 0 con ninguna mano."""
+LIKELIHOOD_FLOOR = 0.02
+"""Ninguna acción tiene probabilidad 0 con ninguna mano (faroles, tapados, errores)."""
 CUT_SHARPNESS = 0.06
-ORDAGO_EXTRA_THRESHOLD = 0.15
-"""Un órdago se supone con una mano algo más fuerte que un envite normal."""
 
-BET_KINDS = {"BetPlaced": "bet", "BetRaised": "bet", "OrdagoDeclared": "ordago"}
-RESPONSE_KINDS = {
-    "Passed": "pass",
-    "BetAccepted": "accept",
-    "OrdagoAccepted": "accept",
-    "BetRejected": "reject",
-}
+
+def logit(p: float) -> float:
+    p = min(1 - 1e-6, max(1e-6, p))
+    return math.log(p / (1 - p))
+
+
+def fitted_probability(lance: str, decision: str, strength: float, shift: float = 0.0) -> float:
+    """P(decisión | fuerza s) = σ(a + b·s + shift), con (a, b) estimados por máxima
+    verosimilitud (``scripts/behaviour_fit.py``); ``shift`` desplaza el intercepto según lo que
+    el PlayerModel sabe de ese jugador. Si el lance tiene pocos datos, el ajuste conjunto."""
+    a, b, _, _ = FITS.get((lance, decision)) or FITS[("*", decision)]
+    x = a + b * strength + shift
+    if x >= 0:
+        return 1 / (1 + math.exp(-x))
+    z = math.exp(x)
+    return z / (1 + z)
 
 
 def bayes_update(
@@ -69,7 +76,9 @@ class Evidence:
 
     seat: int
     kind: str
-    """``bet``, ``ordago``, ``pass``, ``accept``, ``reject``, ``mus``, ``cut`` o ``asked``."""
+    """``bet``, ``ordago`` (al abrir el lance), ``raise``, ``ordago_resp`` (como respuesta a un
+    envite), ``pass``, ``accept``, ``reject``, ``accept_ordago``, ``reject_ordago``, ``mus``,
+    ``cut`` o ``asked``."""
     lance: str = ""
     n: int = 1
     """Envites que lleva ese asiento en el lance (incluido este), o cartas pedidas."""
@@ -78,9 +87,13 @@ class Evidence:
         what = {
             "bet": "envida",
             "ordago": "echa órdago",
+            "raise": "reenvida",
+            "ordago_resp": "responde con órdago",
             "pass": "pasa",
             "accept": "quiere",
             "reject": "no quiere",
+            "accept_ordago": "quiere el órdago",
+            "reject_ordago": "no quiere el órdago",
             "mus": "da mus",
             "cut": "corta el mus",
             "asked": f"pide {self.n} cartas",
@@ -101,59 +114,101 @@ def evidence_from(obs: Observation) -> list[Evidence]:
     )
     out: list[Evidence] = []
     bets: dict[tuple[int, str], int] = {}
+    pending: str | None = None  # envite en curso en el lance: None, "bet" u "ordago"
     for i, e in enumerate(events):
         actor = e["actor"]
         kind = e["kind"]
         payload = e["payload"]
+        if kind == "LanceStarted":
+            pending = None
+            continue
         if kind == "CardsDiscarded" and "count" in payload and payload["seat"] != obs.seat:
             out.append(Evidence(payload["seat"], "asked", n=int(payload["count"])))
             continue
+        lance = payload.get("lance", "")
+        was = pending
+        if kind in ("BetPlaced", "BetRaised"):
+            pending = "bet"
+        elif kind == "OrdagoDeclared":
+            pending = "ordago"
         if actor is None or actor == obs.seat:
             continue
         if kind in ("MusRequested", "MusCut") and i > last_discard:
             out.append(Evidence(actor, "cut" if kind == "MusCut" else "mus"))
-        elif kind in BET_KINDS:
-            lance = payload.get("lance", "")
+        elif kind == "Passed":
+            out.append(Evidence(actor, "pass", lance))
+        elif kind in ("BetPlaced", "BetRaised", "OrdagoDeclared"):
             bets[(actor, lance)] = bets.get((actor, lance), 0) + 1
-            out.append(Evidence(actor, BET_KINDS[kind], lance, bets[(actor, lance)]))
-        elif kind in RESPONSE_KINDS:
-            out.append(Evidence(actor, RESPONSE_KINDS[kind], payload.get("lance", "")))
+            n = bets[(actor, lance)]
+            if kind == "BetPlaced":
+                out.append(Evidence(actor, "bet", lance, n))
+            elif kind == "BetRaised":
+                out.append(Evidence(actor, "raise", lance, n))
+            else:
+                out.append(Evidence(actor, "ordago" if was is None else "ordago_resp", lance, n))
+        elif kind == "BetAccepted":
+            out.append(Evidence(actor, "accept", lance))
+        elif kind == "OrdagoAccepted":
+            out.append(Evidence(actor, "accept_ordago", lance))
+        elif kind == "BetRejected":
+            out.append(Evidence(actor, "reject_ordago" if was == "ordago" else "reject", lance))
     return out
 
 
 @dataclass(frozen=True)
 class SeatBehaviour:
-    """Parámetros del modelo de decisiones de un jugador (los aprende el PlayerModel)."""
+    """Ajuste del modelo de decisiones a un jugador concreto (lo aprende el PlayerModel):
+    desplazamientos del intercepto, en la escala logit, de «envida» y de «quiere»."""
 
-    bluff: float = PRIORS["bluff_frequency"]
-    bet_threshold: float = 0.7
-    accept_threshold: float = 0.55
+    envida_shift: float = 0.0
+    quiere_shift: float = 0.0
     cut_threshold: float = 0.42
 
 
 @dataclass
 class BehaviourModel:
-    """P(acción | mano): modelo de decisiones, separado del modelo de cartas."""
+    """P(acción | mano): modelo de decisiones, separado del modelo de cartas.
+
+    Las decisiones de los lances usan regresiones logísticas estimadas por máxima verosimilitud
+    con las manos enseñadas al final de cada jugada (``behaviour_data.py``). Mus/corte y cartas
+    pedidas usan las verosimilitudes heurísticas de siempre (no hay ajuste)."""
 
     seats: dict[int, SeatBehaviour] = field(default_factory=dict)
 
     def params(self, seat: int) -> SeatBehaviour:
         return self.seats.get(seat, SeatBehaviour())
 
+    def prob(self, seat: int, lance: str, decision: str, hand: Sequence[Card]) -> float:
+        """P(el asiento toma la decisión | su mano), sin suelo."""
+        p = self.params(seat)
+        shift = {"envida": p.envida_shift, "quiere": p.quiere_shift}.get(decision, 0.0)
+        return fitted_probability(lance, decision, hand_strength(hand, lance), shift)
+
     def likelihood(self, e: Evidence, hand: Sequence[Card]) -> float:
-        p = self.params(e.seat)
-        if e.kind in ("bet", "ordago"):
-            tau = p.bet_threshold + (ORDAGO_EXTRA_THRESHOLD if e.kind == "ordago" else 0.0)
-            value = bet_likelihood(hand_strength(hand, e.lance), p.bluff, e.n, tau)
-        elif e.kind in ("pass", "accept", "reject"):
-            value = action_likelihood(e.kind, hand_strength(hand, e.lance), p.bluff)
-        elif e.kind in ("cut", "mus"):
-            cut = 1 / (1 + math.exp(-(hand_value(hand) - p.cut_threshold) / CUT_SHARPNESS))
+        if e.kind in ("cut", "mus"):
+            v = hand_value(hand) - self.params(e.seat).cut_threshold
+            cut = 1 / (1 + math.exp(-v / CUT_SHARPNESS))
             value = cut if e.kind == "cut" else 1 - cut
         elif e.kind == "asked":
             value = discard_weight(hand_value(hand), float(e.n))
-        else:  # pragma: no cover - tipos cerrados arriba
-            value = 1.0
+        else:
+
+            def pr(decision: str) -> float:
+                return self.prob(e.seat, e.lance, decision, hand)
+
+            value = {
+                # P(envite) = P(envida) − P(órdago al abrir): el órdago es una forma de envidar.
+                "bet": lambda: pr("envida") - pr("ordago_abre"),
+                "ordago": lambda: pr("ordago_abre"),
+                "pass": lambda: 1 - pr("envida"),
+                # Querer o subir: «quiere» menos la parte de órdagos (no se ajusta la subida aparte).
+                "accept": lambda: pr("quiere") - pr("ordago_responde"),
+                "raise": lambda: pr("quiere") - pr("ordago_responde"),
+                "ordago_resp": lambda: pr("ordago_responde"),
+                "reject": lambda: 1 - pr("quiere"),
+                "accept_ordago": lambda: pr("quiere_ordago"),
+                "reject_ordago": lambda: 1 - pr("quiere_ordago"),
+            }[e.kind]()
         return max(LIKELIHOOD_FLOOR, min(1.0, value))
 
     def world_likelihood(self, evidence: Sequence[Evidence], world: World) -> float:

@@ -19,7 +19,16 @@ Consecuencias que se modelan (reglas y tanteo del motor):
   pares/juego/punto, el deje: mis jugadas). Si lo quieren, gana el lance quien tenga mejor
   jugada en ``s``. La **selección adversa** sale sola: a(s) es mayor en los mundos donde ellos
   tienen buena mano.
-* **Órdago**: si lo quieren, U = 1 si gano el lance en ``s`` y 0 si no.
+* **Órdago**: si lo quieren, U = 1 si gano el lance en ``s`` y 0 si no. Para **echarlo** no se
+  usa la P(lo quieren) estimada, sino la **peor política de aceptación** posible (decisión
+  robusta, maximin de Wald): el rival lo quiere justo en los mundos en que me gana,
+  EV = Σ_s w_s · min(U(no lo quieren, s), U(lo quieren, s)). Motivo, medido: el modelo de
+  decisiones se estimó con órdagos de bots que solo los echan con manos muy fuertes; frente a
+  órdagos de farol el rival los quiere el doble de lo previsto (0,28 frente a 0,14 en 100
+  órdagos) y un error ahí cuesta la partida entera. Ver docs/probabilidad.md.
+* **Querer un órdago** vale P(gano el lance | E); se decide con la **cota inferior del IC95**
+  de esa probabilidad (decisión prudente ante el error de estimación: con poco tamaño efectivo
+  de muestra no se arriesga la partida).
 * **Responder** a un envite: querer, no querer (si mi compañero aún puede querer, decide él
   según su mano en ``s``), subir o echar órdago (con la respuesta de quien envidó).
 
@@ -36,7 +45,6 @@ import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
-from musst.bots.toolkit import hand_strength
 from musst.engine import evaluation as ev
 from musst.engine.actions import (
     AcceptAction,
@@ -53,15 +61,13 @@ from musst.engine.config import RulesConfig
 from musst.engine.observation import Observation
 from musst.probability.bayes import BehaviourModel
 from musst.probability.equity import equity_after
+from musst.probability.estimators import effective_sample_size, wilson_interval
 from musst.probability.lances import lance_outcome
 from musst.probability.sampler import World
 
-ACCEPT_SHARPNESS = 0.1
-ORDAGO_ACCEPT_SHIFT = 0.2
-"""Para querer un órdago se supone una mano algo mejor que para querer un envite."""
-STAKE_ACCEPT_SHIFT = 0.01
-"""Cada tanto más de envite exige un poco más de mano para quererlo."""
-RESPONSE_FLOOR = 0.03
+RESPONSE_FLOOR = 0.01
+ROBUST_ORDAGO = True
+"""Evalúa los órdagos propios frente a la peor política de aceptación del rival."""
 """Nadie quiere ni rechaza con certeza absoluta."""
 PLAY_LANCES = ("pares", "juego", "punto")
 
@@ -160,11 +166,11 @@ class DecisionModel:
         return equity_after(self.mine, self.theirs, self.target, d_mine, d_theirs)
 
     def p_accept(self, seat: int, world: World, stake: int, ordago: bool = False) -> float:
-        """P(el asiento quiere | su mano en el mundo): modelo de decisiones (no de cartas)."""
-        p = self.behaviour.params(seat)
-        shift = ORDAGO_ACCEPT_SHIFT if ordago else STAKE_ACCEPT_SHIFT * max(0, stake - 2)
-        x = (hand_strength(world[seat], self.lance) - p.accept_threshold - shift) / ACCEPT_SHARPNESS
-        return min(1 - RESPONSE_FLOOR, max(RESPONSE_FLOOR, sigmoid(x)))
+        """P(el asiento quiere | su mano en el mundo): modelo de decisiones ajustado con datos
+        (no depende del importe del envite: el ajuste no lo incluye)."""
+        decision = "quiere_ordago" if ordago else "quiere"
+        p = self.behaviour.prob(seat, self.lance, decision, world[seat])
+        return min(1 - RESPONSE_FLOOR, max(RESPONSE_FLOOR, p))
 
     def p_team_accepts(
         self, seats: Sequence[int], world: World, stake: int, ordago: bool = False
@@ -176,10 +182,8 @@ class DecisionModel:
 
     def p_bets(self, seat: int, world: World) -> float:
         """P(el asiento envida en un lance abierto | su mano)."""
-        p = self.behaviour.params(seat)
-        strength = hand_strength(world[seat], self.lance)
-        value = sigmoid((strength - p.bet_threshold) / 0.05)
-        return min(1 - RESPONSE_FLOOR, max(RESPONSE_FLOOR, 0.5 * p.bluff + (1 - p.bluff) * value))
+        p = self.behaviour.prob(seat, self.lance, "envida", world[seat])
+        return min(1 - RESPONSE_FLOOR, max(RESPONSE_FLOOR, p))
 
     def players_of_lance(self) -> list[int]:
         """Quién juega el lance (pares/juego: quien lo ha declarado)."""
@@ -324,6 +328,16 @@ class DecisionModel:
             {"p_envidan_ellos": p_bet, "responderia_queriendo": 1.0 if respond_accept else 0.0},
         )
 
+    def _ordago_branches(
+        self, i: int, acc: float, rej_u: float
+    ) -> list[tuple[float, float, float | None]]:
+        """Órdago echado por mi pareja en el mundo ``i``: robusto (ver docstring del módulo).
+        Con ``ROBUST_ORDAGO = False`` se usaría la P(lo quieren) del modelo."""
+        win = 1.0 if self.outcome[i] == "gana" else 0.0
+        if ROBUST_ORDAGO:
+            return [(1.0, min(rej_u, win), None)]
+        return [(1 - acc, rej_u, None), (acc, win, None)]
+
     def _opponents_in_lance(self) -> list[int]:
         return [s for s in self.players_of_lance() if s % 2 != self.team]
 
@@ -335,8 +349,7 @@ class DecisionModel:
         def branches(i: int) -> list[tuple[float, float, float | None]]:
             rej_u, rej_d = self._u(self.rejected(i, negada, True))
             if ordago:
-                win = 1.0 if self.outcome[i] == "gana" else 0.0
-                return [(1 - acc[i], rej_u, None), (acc[i], win, None)]
+                return self._ordago_branches(i, acc[i], rej_u)
             acc_u, acc_d = self._u(self.accepted(i, amount))
             return [(1 - acc[i], rej_u, rej_d), (acc[i], acc_u, acc_d)]
 
@@ -360,7 +373,15 @@ class DecisionModel:
                 return [(1.0, 1.0 if self.outcome[i] == "gana" else 0.0, None)]
             return [(1.0, *self._u(self.accepted(i, bet.stake)))]
 
-        return self._value(action, branches)
+        value = self._value(action, branches)
+        if not bet.is_ordago:
+            return value
+        # Querer un órdago: E[U] = P(gano el lance | E). Se decide con la cota inferior del IC95
+        # (Wilson con n = ESS): con poca información efectiva, la cota baja y se rechaza.
+        ess = effective_sample_size([w for w in self.weights if w > 0])
+        low, _ = wilson_interval(value.ev, ess)
+        details = {"p_gano": value.ev, "cota_inferior_95": low, "ess": ess}
+        return ActionValue(action, low, value.var, None, None, details)
 
     def _reject(self) -> ActionValue:
         bet = self.obs.current_bet
@@ -391,8 +412,7 @@ class DecisionModel:
         def branches(i: int) -> list[tuple[float, float, float | None]]:
             rej_u, rej_d = self._u(self.rejected(i, stake, True))
             if ordago:
-                win = 1.0 if self.outcome[i] == "gana" else 0.0
-                return [(1 - acc[i], rej_u, None), (acc[i], win, None)]
+                return self._ordago_branches(i, acc[i], rej_u)
             acc_u, acc_d = self._u(self.accepted(i, total_stake))
             return [(1 - acc[i], rej_u, rej_d), (acc[i], acc_u, acc_d)]
 

@@ -24,7 +24,12 @@ from musst.probability.bayes import (
     posterior_weights,
 )
 from musst.probability.decision import ActionValue, DecisionModel
-from musst.probability.estimators import Method, weighted_proportion
+from musst.probability.estimators import (
+    Method,
+    effective_sample_size,
+    weighted_proportion,
+    wilson_interval,
+)
 from musst.probability.lances import analyze
 from musst.probability.round_points_data import COUNTS, ROUNDS
 from musst.probability.sampler import SeatConstraint, WorldSampler, sample_worlds
@@ -74,7 +79,19 @@ def test_un_envite_desplaza_la_creencia_pero_no_es_una_certeza():
 def test_todas_las_verosimilitudes_tienen_suelo():
     model = BehaviourModel()
     hands = [parse_hand("4O 5C 6E 7B"), parse_hand("12O 12C 3E 3B"), parse_hand("1O 1C 2E 2B")]
-    for kind in ("bet", "ordago", "pass", "accept", "reject", "mus", "cut"):
+    for kind in (
+        "bet",
+        "ordago",
+        "raise",
+        "ordago_resp",
+        "pass",
+        "accept",
+        "reject",
+        "accept_ordago",
+        "reject_ordago",
+        "mus",
+        "cut",
+    ):
         for lance in ("grande", "chica", "pares", "juego", "punto"):
             for h in hands:
                 p = model.likelihood(Evidence(1, kind, lance), h)
@@ -167,10 +184,43 @@ def test_querer_un_ordago_vale_la_probabilidad_de_ganar_el_lance():
         .lances["grande"]
         .win
     )
-    assert values["accept"].ev == pytest.approx(p_win.value)
-    assert values["accept"].points_mean is None  # en un órdago no se juegan tantos, sino la partida
+    accept = values["accept"]
+    # E[U] = P(gano el lance); se decide con la cota inferior de su IC95 (Wilson, n = ESS).
+    assert accept.details["p_gano"] == pytest.approx(p_win.value)
+    assert accept.ev == pytest.approx(
+        wilson_interval(p_win.value, effective_sample_size(weights))[0]
+    )
+    assert accept.ev <= accept.details["p_gano"]
+    assert accept.points_mean is None  # en un órdago no se juegan tantos, sino la partida
     for v in values.values():
         assert 0 <= v.ev <= 1 and v.var >= 0
+
+
+def _open_lance():
+    game = MusGame(seed=2)
+    while game.phase.value == "mus":
+        game.apply(game.turn, CutMusAction())
+    obs = build_observation(game, game.turn)
+    assert obs.current_bet is None and "ordago" in obs.legal_types()
+    return obs
+
+
+def test_echar_un_ordago_es_robusto_frente_a_la_peor_aceptacion():
+    obs = _open_lance()
+    sampler = WorldSampler.from_observation(obs)
+    worlds, weights = sample_worlds(sampler, random.Random(4), 300)
+    model = DecisionModel(obs, worlds, weights, BehaviourModel())
+    value = next(v for v in model.evaluate() if v.action.type == "ordago")
+    # EV = Σ w·min(U(no lo quieren), U(lo quieren)): el rival quiere justo cuando me gana.
+    manual = sum(
+        w
+        * min(
+            model.utility(*model.rejected(i, 1, True)),
+            1.0 if model.outcome[i] == "gana" else 0.0,
+        )
+        for i, w in enumerate(weights)
+    ) / sum(weights)
+    assert value.ev == pytest.approx(manual)
 
 
 def test_valor_esperado_de_un_envite_coincide_con_la_formula():
@@ -285,3 +335,25 @@ def test_la_restriccion_de_declaraciones_se_respeta():
         w = sampler.sample(rng).world
         assert not ev.pairs(w[1]).has_pairs
         assert ev.has_juego(w[3])
+
+
+def test_el_ajuste_logistico_recupera_parametros_conocidos():
+    path = Path(__file__).resolve().parents[2] / "scripts" / "behaviour_fit.py"
+    spec = importlib.util.spec_from_file_location("behaviour_fit", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    rng = random.Random(1)
+    xs = [rng.random() for _ in range(20000)]
+    ys = [1 if rng.random() < 1 / (1 + math.exp(-(-2.0 + 4.0 * x))) else 0 for x in xs]
+    a, b, ll = module.fit_logistic(xs, ys)
+    assert a == pytest.approx(-2.0, abs=0.15) and b == pytest.approx(4.0, abs=0.25)
+    assert ll < 0
+
+
+def test_el_modelo_de_decisiones_esta_ajustado_para_todas_las_decisiones():
+    from musst.probability.behaviour_data import FITS
+
+    for decision in ("envida", "ordago_abre", "quiere", "ordago_responde", "quiere_ordago"):
+        _a, b, n, pos = FITS[("*", decision)]
+        assert b > 0  # más mano ⇒ más probable envidar, querer o echar órdago
+        assert 0 < pos < n

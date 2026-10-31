@@ -148,6 +148,12 @@ class WorldSampler:
                 weights = [type_weight(counts, ht) for ht in types]
                 z = sum(weights)
                 if z == 0:
+                    # Reparto imposible con lo ya repartido: se completa con las cartas que
+                    # quedan (todo reparto tiene las cuatro manos) y su peso es 0.
+                    flat = [c for cards in by_class for c in cards]
+                    rng.shuffle(flat)
+                    for k, rest in enumerate(s for s in self.others if s not in world):
+                        world[rest] = tuple(flat[4 * k : 4 * k + 4])
                     return WorldSample(world, 0.0)
                 weight *= z / comb(n_cards, HAND_SIZE)
                 (ht,) = rng.choices(types, weights=weights)
