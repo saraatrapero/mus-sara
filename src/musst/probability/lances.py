@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from functools import lru_cache
 
 from musst.engine import evaluation as ev
 from musst.engine.cards import Card
@@ -44,11 +45,37 @@ def speaking_order(mano: int) -> list[int]:
     return [(mano + i) % 4 for i in range(4)]
 
 
+@lru_cache(maxsize=1 << 16)
+def hand_key(
+    lance: str, hand: tuple[Card, ...], eight_kings: bool = True
+) -> tuple[int, ...] | None:
+    """Clave de la mano en el lance (``None`` si no lo juega), con el evaluador del motor.
+
+    En caché: en cada decisión se evalúan las mismas manos miles de veces (cada reparto, cada
+    lance, a priori y a posteriori). El resultado es idéntico al de ``evaluation.lance_keys``."""
+    return ev.lance_keys(lance, {0: hand}, eight_kings).get(0)
+
+
+@lru_cache(maxsize=1 << 16)
+def hand_play_points(lance: str, hand: tuple[Card, ...], config: RulesConfig) -> int:
+    """Tantos de jugada de una sola mano en pares o juego (``evaluation.play_points``)."""
+    return ev.play_points(lance, (hand,), config)
+
+
+def _keys(lance: str, world: World, eight_kings: bool) -> dict[int, tuple[int, ...]]:
+    out = {}
+    for seat, hand in world.items():
+        key = hand_key(lance, tuple(hand), eight_kings)
+        if key is not None:
+            out[seat] = key
+    return out
+
+
 def lance_outcome(
     lance: str, world: World, mano: int, team: int, eight_kings: bool = True
 ) -> tuple[str, bool]:
     """(resultado para ``team``, ¿empate de cartas entre las dos parejas?)."""
-    keys = ev.lance_keys(lance, world, eight_kings)
+    keys = _keys(lance, world, eight_kings)
     if not keys:
         return "nadie", False
     winner = ev.best_seat(keys, speaking_order(mano))
@@ -60,7 +87,7 @@ def lance_outcome(
 
 def lances_in_play(world: World, eight_kings: bool = True) -> tuple[str, ...]:
     """Lances que se juegan con este reparto: punto solo si nadie tiene juego."""
-    juego = any(ev.has_juego(h, eight_kings) for h in world.values())
+    juego = any(hand_key("juego", tuple(h), eight_kings) is not None for h in world.values())
     return ("grande", "chica", "pares", "juego") if juego else ("grande", "chica", "pares", "punto")
 
 
@@ -74,14 +101,16 @@ def round_points_paso(
     k8 = cfg.eight_kings
     pts = [0, 0]
     for lance in lances_in_play(world, k8):
-        winner = ev.lance_winner(lance, world, speaking_order(mano), k8)
-        if winner is None:
+        keys = _keys(lance, world, k8)
+        if not keys:
             continue
-        t = winner % 2
+        t = ev.best_seat(keys, speaking_order(mano)) % 2
         if lance in ("grande", "chica"):
             pts[t] += cfg.paso_points
+        elif lance == "punto":
+            pts[t] += cfg.punto_points
         else:
-            pts[t] += ev.play_points(lance, (world[t], world[t + 2]), cfg)
+            pts[t] += sum(hand_play_points(lance, tuple(world[s]), cfg) for s in (t, t + 2))
     return (pts[team], pts[1 - team])
 
 
@@ -128,6 +157,63 @@ class RoundAnalysis:
     points: PointsDistribution
 
 
+@dataclass(frozen=True)
+class WorldOutcomes:
+    """Resultado de cada lance y tantos en paso de cada reparto, calculados **una vez** y
+    reutilizables con distintos pesos (a priori, a posteriori)."""
+
+    lances: tuple[str, ...]
+    results: dict[str, list[tuple[str, bool]]]
+    points: list[tuple[int, int]]
+
+
+def world_outcomes(
+    worlds: Sequence[World],
+    mano: int,
+    team: int,
+    lances: Iterable[str] = ev.LANCES,
+    config: RulesConfig | None = None,
+) -> WorldOutcomes:
+    cfg = config or RulesConfig()
+    k8 = cfg.eight_kings
+    lances = tuple(lances)
+    order = speaking_order(mano)
+    results: dict[str, list[tuple[str, bool]]] = {lance: [] for lance in lances}
+    points: list[tuple[int, int]] = []
+    for world in worlds:
+        keys = {lance: _keys(lance, world, k8) for lance in ev.LANCES}
+        for lance in lances:
+            k = keys[lance]
+            if not k:
+                results[lance].append(("nadie", False))
+                continue
+            winner = ev.best_seat(k, order)
+            mine = [v for s, v in k.items() if s % 2 == team]
+            theirs = [v for s, v in k.items() if s % 2 != team]
+            tie = bool(mine and theirs and max(mine) == max(theirs))
+            results[lance].append(("gana" if winner % 2 == team else "pierde", tie))
+        # Tantos si todo va en paso (lo mismo que round_points_paso, con las claves ya hechas).
+        pts = [0, 0]
+        in_play = (
+            ("grande", "chica", "pares", "juego")
+            if keys["juego"]
+            else ("grande", "chica", "pares", "punto")
+        )
+        for lance in in_play:
+            k = keys[lance]
+            if not k:
+                continue
+            t = ev.best_seat(k, order) % 2
+            if lance in ("grande", "chica"):
+                pts[t] += cfg.paso_points
+            elif lance == "punto":
+                pts[t] += cfg.punto_points
+            else:
+                pts[t] += sum(hand_play_points(lance, tuple(world[s]), cfg) for s in (t, t + 2))
+        points.append((pts[team], pts[1 - team]))
+    return WorldOutcomes(lances, results, points)
+
+
 def analyze(
     worlds: Sequence[World],
     weights: Sequence[float],
@@ -137,22 +223,24 @@ def analyze(
     lances: Iterable[str] = ev.LANCES,
     config: RulesConfig | None = None,
     is_exact: bool = False,
+    outcomes: WorldOutcomes | None = None,
 ) -> RoundAnalysis:
     """Probabilidades de cada lance y distribución de tantos sobre repartos ponderados.
 
     Con ``is_exact`` los pesos son probabilidades exactas (enumeración completa) y no hay
-    error de muestreo; si no, cada valor lleva su SE e IC95."""
-    k8 = (config or RulesConfig()).eight_kings
+    error de muestreo; si no, cada valor lleva su SE e IC95. ``outcomes`` permite reutilizar
+    los resultados ya calculados de los mismos repartos con otros pesos."""
+    oc = outcomes or world_outcomes(worlds, mano, team, lances, config)
     out: dict[str, LanceProbabilities] = {}
-    for lance in lances:
-        results = [lance_outcome(lance, w, mano, team, k8) for w in worlds]
 
-        def est(values: list[float], m: Method = method) -> ProbabilityEstimate:
-            if is_exact:
-                total = sum(weights)
-                return exact(sum(w * v for w, v in zip(weights, values, strict=True)) / total)
-            return weighted_proportion(values, weights, m)
+    def est(values: list[float]) -> ProbabilityEstimate:
+        if is_exact:
+            total = sum(weights)
+            return exact(sum(w * v for w, v in zip(weights, values, strict=True)) / total)
+        return weighted_proportion(values, weights, method)
 
+    for lance in oc.lances:
+        results = oc.results[lance]
         out[lance] = LanceProbabilities(
             lance,
             est([1.0 if r == "gana" else 0.0 for r, _ in results]),
@@ -160,14 +248,13 @@ def analyze(
             est([1.0 if r == "nadie" else 0.0 for r, _ in results]),
             est([1.0 if t else 0.0 for _, t in results]),
         )
-    pts = [round_points_paso(w, mano, team, config) for w in worlds]
     total = sum(weights) or 1.0
     mine: dict[int, float] = {}
     theirs: dict[int, float] = {}
-    for (a, b), w in zip(pts, weights, strict=True):
+    for (a, b), w in zip(oc.points, weights, strict=True):
         mine[a] = mine.get(a, 0.0) + w / total
         theirs[b] = theirs.get(b, 0.0) + w / total
-    net_mean, net_var, _ = weighted_mean([a - b for a, b in pts], list(weights))
+    net_mean, net_var, _ = weighted_mean([a - b for a, b in oc.points], list(weights))
     return RoundAnalysis(out, PointsDistribution(mine, theirs, net_mean, net_var, method))
 
 

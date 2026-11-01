@@ -38,6 +38,7 @@ from musst.probability.lances import (
     analytic_win_probability,
     analyze,
     lance_outcome,
+    world_outcomes,
 )
 from musst.probability.sampler import WorldSampler, constraints_from
 
@@ -116,6 +117,7 @@ class BayesianAgent(Agent):
         worlds: list[dict[int, tuple[Any, ...]]] = []
         prior: list[float] = []
         post: list[float] = []
+        wins: list[float] = []
         se = 1.0
         converged = False
         while len(worlds) < n_max:
@@ -126,7 +128,8 @@ class BayesianAgent(Agent):
                 post.append(
                     s.weight * behaviour.world_likelihood(evidence, s.world) if s.weight else 0.0
                 )
-            est = weighted_proportion(_win_indicator(ctx, worlds), post, Method.POSTERIOR)
+            wins.extend(_win_indicator(ctx, worlds[len(wins) :]))
+            est = weighted_proportion(wins, post, Method.POSTERIOR)
             se = est.se
             if len(worlds) >= n_min and se <= TOLERANCE and est.ess >= MIN_ESS:
                 converged = True
@@ -156,8 +159,13 @@ class MathAnalystAgent(Agent):
         report = AgentReport(self.name)
         belief: Belief = ctx.shared["belief"]
         obs = ctx.obs
-        post = analyze(belief.worlds, belief.posterior, obs.mano, obs.team, belief.method)
-        prior = analyze(belief.worlds, belief.prior, obs.mano, obs.team, Method.MONTE_CARLO)
+        oc = world_outcomes(belief.worlds, obs.mano, obs.team)  # una vez, para los dos pesos
+        post = analyze(
+            belief.worlds, belief.posterior, obs.mano, obs.team, belief.method, outcomes=oc
+        )
+        prior = analyze(
+            belief.worlds, belief.prior, obs.mano, obs.team, Method.MONTE_CARLO, outcomes=oc
+        )
         ctx.shared["analysis"] = post
         ctx.shared["analysis_prior"] = prior
         if ctx.lance in post.lances:
