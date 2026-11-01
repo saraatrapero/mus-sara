@@ -5,6 +5,8 @@
 * Liga todos contra todos con **mus duplicado**: cada seed se juega dos veces cambiando a las
   parejas de asiento, para reducir el efecto de la suerte.
 * Un bot que falla, se cuelga o juega ilegal pierde esa partida; el torneo sigue.
+* Clasificación por **Elo de Bradley-Terry** (:mod:`musst.arena.bradley_terry`), con el % de
+  victorias y su margen al 95 % al lado.
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from musst.arena import bradley_terry
 from musst.bots.api import Bot
 from musst.runtime.runner import play_game
 
@@ -42,6 +45,7 @@ class Standing:
     illegal: int = 0
     timeouts: int = 0
     elo: float = 1500.0
+    """Elo de Bradley-Terry (se calcula al terminar el torneo con todos los cruces)."""
 
     @property
     def win_rate(self) -> float:
@@ -68,6 +72,7 @@ class Standing:
             if self.games
             else 0.0,
             elo=round(self.elo, 1),
+            margin_95=round(bradley_terry.margen_95(self.wins, self.games), 4),
         )
         return data
 
@@ -92,10 +97,21 @@ class TournamentResult:
     started_at: float
     duration_s: float
 
+    def cruces(self) -> dict[tuple[str, str], tuple[int, int]]:
+        """(a, b) → (victorias de a contra b, partidas entre los dos)."""
+        tabla: dict[tuple[str, str], list[int]] = {}
+        for g in self.games:
+            a, b = sorted((g.team0, g.team1))
+            celda = tabla.setdefault((a, b), [0, 0])
+            celda[0] += g.winner == a
+            celda[1] += 1
+        return {k: (v[0], v[1]) for k, v in tabla.items()}
+
     def ranking(self) -> list[Standing]:
+        """De mejor a peor por Elo de Bradley-Terry; desempata el % de victorias."""
         return sorted(
             self.standings,
-            key=lambda s: (s.win_rate, s.points_for - s.points_against, -s.errors),
+            key=lambda s: (round(s.elo, 6), s.win_rate, s.points_for - s.points_against),
             reverse=True,
         )
 
@@ -106,14 +122,12 @@ class TournamentResult:
             "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(self.started_at)),
             "duration_s": round(self.duration_s, 1),
             "ranking": [s.to_dict() for s in self.ranking()],
+            "head_to_head": [
+                {"a": a, "b": b, "wins_a": v, "games": n}
+                for (a, b), (v, n) in self.cruces().items()
+            ],
             "games": [asdict(g) for g in self.games],
         }
-
-
-def _update_elo(a: Standing, b: Standing, score_a: float, k: float = 24.0) -> None:
-    expected = 1 / (1 + 10 ** ((b.elo - a.elo) / 400))
-    a.elo += k * (score_a - expected)
-    b.elo += k * ((1 - score_a) - (1 - expected))
 
 
 def run_tournament(
@@ -149,7 +163,6 @@ def run_tournament(
                     st.points_against += res.score[1 - team]
                 table[winner.name].wins += 1
                 table[loser.name].losses += 1
-                _update_elo(table[winner.name], table[loser.name], 1.0)
                 errors = []
                 for err in match.errors:
                     part = first if err.seat % 2 == 0 else second
@@ -171,6 +184,10 @@ def run_tournament(
                 )
         if progress:
             progress(f"{a.name} vs {b.name} terminado")
-    return TournamentResult(
+    result = TournamentResult(
         seed, games_per_pair, list(table.values()), records, start, time.time() - start
     )
+    puntuacion = bradley_terry.elo(list(table), result.cruces())
+    for st in result.standings:
+        st.elo = puntuacion[st.name]
+    return result

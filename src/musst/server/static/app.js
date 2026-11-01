@@ -1831,14 +1831,38 @@ const myId = () => cloud.cloudProfile()?.id;
 function champsUnavailable() {
   $main.append(h(`<div class="page stack"><h1 class="page-title">Campeonatos</h1><section class="panel stack">
     <p>Los campeonatos necesitan cuentas compartidas entre dispositivos (Supabase), para que cada persona se apunte desde su móvil u ordenador.</p>
-    <p class="muted">La administración lo activa siguiendo <a href="https://saraatrapero.github.io/mus-sara/docs/deployment/" rel="noopener">Despliegue → Cuentas compartidas</a>.</p></section></div>`));
+    <p class="muted">La administración lo activa siguiendo <a href="https://saraatrapero.github.io/mus-sara/docs/deployment/" rel="noopener">Despliegue → Cuentas compartidas</a>.</p></section>
+    <section class="panel stack" id="bot-ranking" aria-label="Torneo de bots">Cargando la clasificación de bots…</section></div>`));
+  botRanking();
+}
+// Torneo de bots: lo juega la GitHub Action (mus-torneo) y publica scoreboard/scoreboard.json.
+async function botRanking() {
+  const el = document.getElementById("bot-ranking");
+  if (!el) return;
+  let data;
+  try {
+    const res = await fetch("scoreboard/scoreboard.json", { cache: "no-store" });
+    if (!res.ok) throw new Error(String(res.status));
+    data = await res.json();
+  } catch {
+    el.innerHTML = '<h2 class="card-title">🏆 Torneo de bots</h2><p class="muted">La clasificación se publica cuando la GitHub Action juega el torneo (al fusionar en main, cada lunes o a mano).</p>';
+    return;
+  }
+  const pctTxt = (r) => `${(r.win_rate * 100).toFixed(1)} % ± ${((r.margin_95 ?? 0) * 100).toFixed(1)}`;
+  el.innerHTML = `<h2 class="card-title">🏆 Torneo de bots</h2>
+    <p class="muted">Todos contra todos con repartos duplicados (${data.games_per_pair} repartos por cruce, cada uno jugado en los dos sentidos) · ${esc(data.generated_at.slice(0, 10))}.
+    Elo de Bradley-Terry: media 1500; 200 puntos de diferencia ≈ 76 % de victorias.</p>
+    <div class="table-wrap"><table class="data"><thead><tr><th>#</th><th class="l">Bot</th><th class="l">Autor</th><th>Elo</th><th>Partidas</th><th>% victorias (± 95 %)</th><th>Faltas</th></tr></thead>
+    <tbody>${data.ranking.map((r, i) => `<tr><td>${i + 1}</td><td class="l"><code>${esc(r.name)}</code></td><td class="l">${esc(r.author || "—")}</td><td>${Math.round(r.elo)}</td><td>${r.games}</td><td>${pctTxt(r)}</td><td>${r.errors}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
 async function champsView() {
   if (!cloud.cloudEnabled()) return champsUnavailable();
   $main.append(h(`<div class="page stack"><h1 class="page-title">Campeonatos</h1>
     <p class="muted">Eliminatorias por parejas: cuartos de final, semifinales y final. Apúntate antes de la fecha de comienzo; las plazas que queden libres las ocupan parejas de bots.</p>
-    <div id="champ-list" class="champ-list">Cargando…</div></div>`));
+    <div id="champ-list" class="champ-list">Cargando…</div>
+    <section class="panel stack" id="bot-ranking" aria-label="Torneo de bots">Cargando la clasificación de bots…</section></div>`));
+  botRanking();
   const el = document.getElementById("champ-list");
   try {
     const list = await cloud.championships();

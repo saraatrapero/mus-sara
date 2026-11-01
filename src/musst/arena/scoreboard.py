@@ -6,21 +6,39 @@ import html
 import json
 from pathlib import Path
 
+from musst.arena import bradley_terry
 from musst.arena.tournament import TournamentResult
 
 
 def to_markdown(result: TournamentResult) -> str:
+    """Clasificación (Elo de Bradley-Terry y % de victorias) y tabla de cruces."""
+    ranking = result.ranking()
     lines = [
-        "| # | Bot | Partidas | Victorias | Derrotas | % Victorias (IC 95 %) | Tantos ± / partida | Errores | Elo |",
+        "| # | Bot | Autor | Elo | Partidas | Victorias | % (± 95 %) | Tantos ± / partida | Faltas |",
         "|---|---|---|---|---|---|---|---|---|",
     ]
-    for i, s in enumerate(result.ranking(), 1):
-        low, high = s.wilson()
+    for i, s in enumerate(ranking, 1):
         diff = (s.points_for - s.points_against) / s.games if s.games else 0
+        margen = bradley_terry.margen_95(s.wins, s.games)
         lines.append(
-            f"| {i} | {s.name} | {s.games} | {s.wins} | {s.losses} | "
-            f"{s.win_rate:.0%} ({low:.0%}–{high:.0%}) | {diff:+.1f} | {s.errors} | {s.elo:.0f} |"
+            f"| {i} | `{s.name}` | {s.author or '—'} | {s.elo:.0f} | {s.games} | {s.wins} | "
+            f"{s.win_rate:.1%} ± {margen:.1%} | {diff:+.1f} | {s.errors} |"
         )
+    cruces = result.cruces()
+    names = [s.name for s in ranking]
+    lines += [
+        "",
+        "**Cruces**: % de victorias del bot de la fila contra el de la columna.",
+        "",
+        "| | " + " | ".join(f"`{n}`" for n in names) + " |",
+        "|---|" + "---|" * len(names),
+    ]
+    for a in names:
+        cells = []
+        for b in names:
+            v, n = bradley_terry.victorias(cruces, a, b)
+            cells.append("—" if a == b else f"{v / n:.0%}" if n else "")
+        lines.append(f"| `{a}` | " + " | ".join(cells) + " |")
     return "\n".join(lines) + "\n"
 
 
