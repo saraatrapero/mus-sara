@@ -13,10 +13,12 @@ from musst.bots.toolkit import (
     unseen_cards,
 )
 from musst.engine.cards import Card
-from musst.engine.evaluation import pairs, total_points
+from musst.engine.config import RulesConfig
+from musst.engine.evaluation import play_points
 from musst.learning.extract import STRONG, WEAK
 from musst.learning.player_model import PRIORS, score_context
 
+DEFAULT_RULES = RulesConfig()
 BETTING_EVENTS = {"BetPlaced", "BetRaised", "OrdagoDeclared"}
 
 
@@ -144,17 +146,9 @@ def round_reads(ctx: AgentContext) -> list[tuple[int, str, str]]:
 
 def team_play_value(lance: str, world: dict[int, tuple[Card, ...]], team: int) -> float:
     """Tantos de jugada que cobra una pareja al ganar el lance [CONVENCIÓN del motor]."""
-    if lance == "punto":
-        return 1.0
-    total = 0.0
-    for seat in (team, team + 2):
-        hand = world[seat]
-        if lance == "pares":
-            total += float(int(pairs(hand).kind))
-        elif lance == "juego":
-            points = total_points(hand)
-            total += 3.0 if points == 31 else 2.0 if points > 31 else 0.0
-    return total
+    if lance not in ("pares", "juego", "punto"):
+        return 0.0
+    return float(play_points(lance, (world[team], world[team + 2]), DEFAULT_RULES))
 
 
 class CountingAgent(Agent):

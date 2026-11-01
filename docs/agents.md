@@ -9,6 +9,7 @@ Diseño completo: [design/06-agentes.md](design/06-agentes.md). Código: `src/mu
 | Sencillo | `SimpleBot` | Heurísticas de fuerza de mano por lance; ruido del 15 % y faroles ocasionales (errores razonables) |
 | Medio | `AgentBot("medio")` | Agentes de cartas, probabilidad (Monte Carlo, 90 muestras) y marcador |
 | Profesional | `AgentBot("profesional")` | Todos los agentes + PlayerModel con memoria + farol + pareja (300-800 muestras) |
+| Matemático | `AgentBot("matematico")` / `MathBot` | Agentes bayesiano, analista, evaluador y juez matemático: Monte Carlo sin sesgo + Bayes + valor esperado de P(ganar la partida). Ver [Motor probabilístico](probabilidad.md) |
 
 ### Qué hace cada nivel (diferencias claras)
 
