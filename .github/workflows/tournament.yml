@@ -1,11 +1,20 @@
 name: Web, documentación (GitHub Pages) y scoreboard
 
+# Juega el torneo de todos los bots (MUS.ST, mus-cunef y los de bots/), publica la clasificación
+# (Elo de Bradley-Terry) en la web (sección Campeonatos), en la documentación y en el resumen de
+# la ejecución, y despliega todo en GitHub Pages.
+# Se lanza al fusionar en main, cada lunes (6:00 UTC) o a mano desde la pestaña Actions.
+
 on:
   push:
     branches: [main]
   schedule:
-    - cron: "0 3 * * *"
+    - cron: "0 6 * * 1"
   workflow_dispatch:
+    inputs:
+      partidas:
+        description: Repartos por cruce (cada uno se juega dos veces)
+        default: "6"
 
 permissions:
   contents: read
@@ -19,18 +28,26 @@ concurrency:
 jobs:
   tournament:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      - run: pip install -e ".[docs]"
+      # «cunef» trae numpy para los bots reglas e inteligente de mus-cunef
+      - run: pip install -e ".[docs,cunef]"
       - run: python scripts/build_web.py --out site
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+      - name: Jugar el torneo
+        env:
+          PARTIDAS: ${{ github.event.inputs.partidas || '6' }}
+        run: >
+          mus-torneo -n "$PARTIDAS" --seed 2026
+          --out site/scoreboard --markdown docs/clasificacion.md
+      - name: Clasificación en el resumen de la ejecución
+        run: cat docs/clasificacion.md >> "$GITHUB_STEP_SUMMARY"
       - run: mkdocs build --strict --site-dir site/docs
-      - run: musst-arena --games 10 --seed 2026 --out site/scoreboard
-      - run: cat site/scoreboard/scoreboard.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-pages-artifact@v3
         with: { path: site }
   deploy:

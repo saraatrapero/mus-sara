@@ -28,6 +28,7 @@ nav:
   - Reglas del juego: game-rules.md
   - Arquitectura: architecture.md
   - API de bots (tutorial): bot-api.md
+  - Clasificación de bots: clasificacion.md
   - Referencia del API: api-reference.md
   - Agentes de IA: agents.md
   - Motor probabilístico: probabilidad.md
