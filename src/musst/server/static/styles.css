@@ -187,8 +187,9 @@ table.data th:first-child, table.data td:first-child, table.data td.l, table.dat
 .bubble {
   position: absolute; top: -8px; left: 50%; transform: translate(-50%, -100%);
   background: #fffcf5; color: #1d2420; padding: 4px 10px; border-radius: 10px; font-weight: 700; font-size: .85rem;
-  box-shadow: var(--shadow); white-space: nowrap; z-index: 3; animation: pop calc(220ms * var(--speed)) ease-out;
+  box-shadow: var(--shadow); white-space: nowrap; z-index: 3;
 }
+.bubble.fresh { animation: pop calc(220ms * var(--speed)) ease-out; }
 .bubble.ordago { background: var(--accent); color: var(--accent-fg); }
 @keyframes pop { from { transform: translate(-50%, -80%) scale(.7); opacity: 0; } to { transform: translate(-50%, -100%) scale(1); opacity: 1; } }
 
@@ -644,3 +645,4 @@ body.playing .center { position: relative; z-index: 4; }
 .data.calc th { white-space: normal; vertical-align: bottom; }
 .data.calc tr.hl td { background: color-mix(in srgb, var(--gold) 18%, transparent); }
 .calc-why { padding: 10px 12px; border-left: 4px solid var(--gold); background: color-mix(in srgb, var(--gold) 8%, transparent); border-radius: 6px; }
+body.playing .deck-left { bottom: auto; top: 54%; left: 22%; }
