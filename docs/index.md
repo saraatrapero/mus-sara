@@ -75,6 +75,7 @@ config/         reglas y parámetros de agentes
 | [Arquitectura](architecture.md) | Capas, flujo de decisión, máquina de estados, seguridad |
 | [API de bots](bot-api.md) | Tutorial de principio a fin |
 | [Agentes](agents.md) | Niveles, agentes, selección adversa, DecisionExplanation |
+| [Motor probabilístico](probabilidad.md) | Combinatoria, Monte Carlo, Bayes, valor esperado, validación y experimentos |
 | [PlayerModel](player-model.md) | Qué aprende, cómo, memoria, cambios de estrategia |
 | [Testing y experimentos](testing.md) | Pirámide de tests, privacidad, resultados medidos |
 | [Despliegue](deployment.md) | GitHub Pages con Pyodide, local, ReadTheDocs |

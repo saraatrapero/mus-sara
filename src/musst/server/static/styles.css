@@ -632,3 +632,9 @@ body.playing .seat.left .backs.ad .bcard, body.playing .seat.right .backs.ad .bc
 /* En pantallas bajas (p. ej. 1280×720) mi cara podía quedar encima de «¿Repartimos? Sí»: los
    botones del centro siempre por encima. */
 body.playing .center { position: relative; z-index: 4; }
+
+/* ------------------------------------------------------------------ personajes de parodia */
+.parody { font-size: .8rem; }
+.quote { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+.quote-face { width: 44px; height: 44px; border-radius: 50%; overflow: hidden; flex: none; border: 2px solid var(--gold); background: #f3ead7; }
+.quote-face .face { width: 100%; height: 100%; display: block; }

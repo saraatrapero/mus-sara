@@ -4,6 +4,7 @@
 // ejecutándose en este navegador con Pyodide (worker.js). Lo decide <meta name="musst-backend">.
 
 import * as cloud from "./cloud.js";
+import { AVISO, MOMENTO, PERSONAJES, caricatureSVG, frase } from "./personajes.js";
 import { DEFAULT_ADS, DRINKS, backSVG, cleanAds, drinkSVG } from "./publicidad.js";
 
 const $main = document.getElementById("main");
@@ -278,6 +279,16 @@ function talk(e) {
   if (!opts) return BUBBLE[e.kind];
   return opts[(e.seq * 7 + (e.actor ?? 0)) % opts.length];
 }
+// Los bots con personaje dicen la jugada y, una de cada dos veces, su coletilla.
+function talkAs(e, seat) {
+  const base = talk(e);
+  const momento = MOMENTO[e.kind];
+  const q = seat && seat.kind === "bot" && momento ? frase(seat.avatar, momento, e.seq) : null;
+  if (!q || !base || e.seq % 2) return base;
+  return /[.!?…]$/.test(base) ? `${base} ${q}` : `${base}. ${q}`;
+}
+// Puntos de juego de una mano (para ver quién lleva la 31 al enseñar las cartas).
+const handPoints = (codes) => codes.reduce((t, c) => { const r = parseCard(c).rank; return t + (r === 2 ? 1 : r >= 10 || r === 3 ? 10 : r); }, 0);
 const BANTER_WIN = ["¡Esa era nuestra!", "Buena jugada, compañero", "Así se juega"];
 const BANTER_LOSE = ["La próxima es nuestra", "Qué cartas más malas…", "Uf, no hubo suerte"];
 
@@ -394,14 +405,15 @@ function home() {
         <details class="more"><summary>Más opciones</summary>
           <div class="form-grid">
             <label class="field">Partida a<select name="target"><option value="40">40 tantos</option><option value="30">30 tantos</option><option value="20">20 tantos (corta)</option></select></label>
-            <label class="field">Nombre compañero/a<input name="n2" maxlength="24" placeholder="Compañero"></label>
-            <label class="field">Nombre rival 1<input name="n1" maxlength="24" placeholder="Bot 1"></label>
-            <label class="field">Nombre rival 2<input name="n3" maxlength="24" placeholder="Bot 2"></label>
+            <label class="field">Nombre compañero/a<input name="n2" maxlength="24" placeholder="Personaje al azar"></label>
+            <label class="field">Nombre rival 1<input name="n1" maxlength="24" placeholder="Personaje al azar"></label>
+            <label class="field">Nombre rival 2<input name="n3" maxlength="24" placeholder="Personaje al azar"></label>
           </div>
         </details>
         <p class="muted" id="room-hint" hidden>${cloud.cloudEnabled() ? "Se abre una sala con un código: los demás se unen desde su móvil u ordenador." : "Sin cuentas compartidas (Supabase) se juega pasándose este mismo dispositivo."}</p>
         <button class="btn primary big" id="start-btn">Empezar a jugar</button>
       </form>
+      <p class="muted parody">🎭 ${esc(AVISO)}</p>
       ${cloud.cloudEnabled() ? `<form id="join-room" class="join-room">
         <label class="field">¿Te han pasado un código?<input name="code" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="Código de la sala" required pattern="[A-Za-z0-9]{6}"></label>
         <button class="btn">Unirme a la sala</button>
@@ -481,7 +493,7 @@ const LOOKS = [
   { skin: "#f5d6b8", hair: "#a8a39a", style: "calvo" }, { skin: "#c98f68", hair: "#1d1612", style: "rizado" },
 ];
 const POS_VEC = { bottom: [0, 1], right: [1, 0], top: [0, -1], left: [-1, 0] };
-function faceSVG(seat, { pos, lookPos, gesture = null, team = 0, bot = true }) {
+function faceSVG(seat, { pos, lookPos, gesture = null, team = 0, bot = true, avatar = null }) {
   const L = LOOKS[seat % 4];
   const me = POS_VEC[pos] || [0, 1];
   const to = lookPos === "mesa" ? [0, 0] : POS_VEC[lookPos] || [0, 0];
@@ -493,14 +505,15 @@ function faceSVG(seat, { pos, lookPos, gesture = null, team = 0, bot = true }) {
   const eye = (x, closed) => (closed ? `<path d="M${x - 4} 30q4 2 8 0" stroke="#2a1d14" stroke-width="1.6" fill="none"/>`
     : `<ellipse cx="${x}" cy="30" rx="4" ry="3.4" fill="#fff"/><circle cx="${x + dx}" cy="${30 + dy}" r="1.9" fill="#2a1d14"/>`);
   const browY = g === "duples" ? 21 : 24;
-  const mouth = {
+  const signMouth = {
     dos_reyes: '<path d="M26 44q6 3 12 0" stroke="#7a2a2a" stroke-width="2" fill="none"/><rect x="28" y="41.5" width="8" height="2.4" rx="1" fill="#fff"/>',
     dos_ases: '<path d="M27 43q5 3 10 0" stroke="#7a2a2a" stroke-width="1.8" fill="none"/><path d="M29.5 44h5v4a2.5 2.5 0 0 1-5 0z" fill="#e46b7a"/>',
     medias_ases: '<path d="M27 43q5 3 10 0" stroke="#7a2a2a" stroke-width="1.8" fill="none"/><path d="M34 44h5v3.5a2.5 2.5 0 0 1-5 0z" fill="#e46b7a"/>',
     medias: '<path d="M32 44q4 1.5 8-1" stroke="#7a2a2a" stroke-width="2" fill="none"/>',
     medias_reyes: '<path d="M32 44q4 1.5 8-1" stroke="#7a2a2a" stroke-width="2" fill="none"/>',
     juego: '<ellipse cx="32" cy="44" rx="3" ry="2.4" fill="#b8475a"/>',
-  }[g] || '<path d="M27 43q5 3 10 0" stroke="#7a2a2a" stroke-width="1.8" fill="none"/>';
+  }[g] || null;
+  const mouth = signMouth || '<path d="M27 43q5 3 10 0" stroke="#7a2a2a" stroke-width="1.8" fill="none"/>';
   const hair = {
     corto: `<path d="M18 26q0-14 14-14t14 14q-4-7-14-7t-14 7z" fill="${L.hair}"/>`,
     boina: `<ellipse cx="32" cy="16" rx="15" ry="5" fill="#2d2d38"/><circle cx="32" cy="11" r="1.6" fill="#2d2d38"/>`,
@@ -509,6 +522,10 @@ function faceSVG(seat, { pos, lookPos, gesture = null, team = 0, bot = true }) {
   }[L.style];
   const shL = g === "treinta" || g === "veintinueve" ? -4 : 0, shR = g === "treinta" ? -4 : 0;
   const tilt = g === "pares" ? "rotate(-12 32 34)" : "";
+  if (avatar && PERSONAJES[avatar]) {
+    // Caricatura del personaje: mismos ojos, cejas, boca de seña, cabeza y hombros.
+    return caricatureSVG(avatar, { gesture: g, eyes: eye(26, closedL) + eye(38, closedR), mouth: signMouth, browY: browY + 1, tilt, shoulders: shL });
+  }
   const color = team === 0 ? "var(--team-a)" : "var(--team-b)";
   return `<svg class="face ${g ? "gesturing" : ""}" viewBox="0 0 64 64" aria-hidden="true">
     <path d="M6 64q2-${12 - shL / 2} 14-${14 - shL}h24q12 ${2 + shR} 14 ${14 + shR / 2}z" fill="${color}"/>
@@ -733,7 +750,7 @@ function renderGame(bubbles = current?.bubbles || {}) {
     const target = obs.gazes && obs.gazes.length ? obs.gazes[s.seat] : undefined;
     const lookPos = target == null ? "mesa" : seatPosition(target, me);
     const gaze = target === undefined ? "" : `<span class="chip gaze ${target === me && s.seat !== me ? "on-me" : ""}">👀 ${target == null ? "la mesa" : target === me ? (s.seat === me ? "" : "te mira") : esc(names[target])}</span>`;
-    const face = faceSVG(s.seat, { pos, lookPos, gesture: current.gestures?.[s.seat], team: s.team, bot: s.kind === "bot" });
+    const face = faceSVG(s.seat, { pos, lookPos, gesture: current.gestures?.[s.seat], team: s.team, bot: s.kind === "bot", avatar: s.avatar });
     const canLook = obs.gazes && obs.gazes.length && s.seat !== me && !obs.finished;
     const avatar = canLook
       ? `<button class="avatar face-btn ${obs.gazes[me] === s.seat ? "watched" : ""}" data-look="${s.seat}" aria-label="Mirar a ${esc(s.name)}" title="Mirar a ${esc(s.name)}">${face}</button>`
@@ -966,7 +983,7 @@ async function animateTo(obs) {
         await sleep(700);
       } else if (bubble && e.round === prevRound && (e.actor !== obs.seat || declared)) {
         // Lo que dice cada jugador se queda en su bocadillo hasta el siguiente lance.
-        const phrase = human && !declared ? myPhrase({ type: { BetPlaced: "bet", BetRaised: "raise", OrdagoDeclared: "ordago", BetAccepted: "accept", OrdagoAccepted: "accept", BetRejected: "reject", Passed: "pass", MusRequested: "mus", MusCut: "cut" }[e.kind] ?? "", amount: e.payload.amount }) || BUBBLE[e.kind] : talk(e);
+        const phrase = human && !declared ? myPhrase({ type: { BetPlaced: "bet", BetRaised: "raise", OrdagoDeclared: "ordago", BetAccepted: "accept", OrdagoAccepted: "accept", BetRejected: "reject", Passed: "pass", MusRequested: "mus", MusCut: "cut" }[e.kind] ?? "", amount: e.payload.amount }) || BUBBLE[e.kind] : talkAs(e, obs.seats[e.actor]);
         setStatus(text);
         await speakWithBubble(phrase, e.actor, e.kind === "PairsDeclared" || e.kind === "GameDeclared" ? 650 : 1100);
       } else if (e.kind === "HandsRevealed" && e.round === prevRound) {
@@ -974,6 +991,9 @@ async function animateTo(obs) {
         current.obs = { ...current.obs, revealed_hands: e.payload.hands };
         renderGame();
         await sleep(1500);
+        // Un personaje que lleva la 31 lo celebra.
+        const proud = obs.seats.find((s) => s.kind === "bot" && frase(s.avatar, "revela_31") && handPoints(e.payload.hands[String(s.seat)] || []) === 31);
+        if (proud) await speakWithBubble(frase(proud.avatar, "revela_31", e.seq), proud.seat, 1200);
       } else if (e.kind === "SignalSeen" || (e.kind === "SignalMade" && e.actor !== obs.seat)) {
         // La seña se ve en su cara: el gesto oficial durante unos segundos.
         const from = e.payload.seat;
@@ -991,8 +1011,9 @@ async function animateTo(obs) {
         const theirs = lastPts.filter((x) => x.payload.team !== obs.team).reduce((t, x) => t + x.payload.points, 0);
         const bot = obs.seats.find((s) => s.kind === "bot" && s.team !== obs.team) || obs.seats.find((s) => s.kind === "bot");
         if (bot) {
-          const pool = (bot.team === obs.team ? mine >= theirs : theirs > mine) ? BANTER_WIN : BANTER_LOSE;
-          const phrase = pool[e.seq % pool.length];
+          const botWon = bot.team === obs.team ? mine >= theirs : theirs > mine;
+          const pool = botWon ? BANTER_WIN : BANTER_LOSE;
+          const phrase = frase(bot.avatar, botWon ? "gana_lance" : "pierde_lance", e.seq) || pool[e.seq % pool.length];
           current.bubbles = {};
           await speakWithBubble(phrase, bot.seat, 1100);
         }
@@ -1147,6 +1168,11 @@ async function showSummary() {
     const s = a.stats;
     openModal(`
       <h2 id="modal-title">${won ? "Victoria" : "Derrota"} · ${a.result.reason === "ordago" ? "por órdago" : `${a.result.score[a.result.my_team]} – ${a.result.score[1 - a.result.my_team]}`}</h2>
+      ${(current.obs.seats || []).filter((x) => x.kind === "bot" && PERSONAJES[x.avatar]).map((x) => {
+        const theyWon = (x.seat % 2) === a.result.winner;
+        const q = frase(x.avatar, theyWon ? "gana_partida" : "pierde_partida", a.result.score[0] + a.result.score[1]);
+        return q ? `<p class="quote"><span class="quote-face">${faceSVG(x.seat, { pos: "bottom", lookPos: "mesa", avatar: x.avatar })}</span><strong>${esc(x.name)}:</strong> «${esc(q)}»</p>` : "";
+      }).join("")}
       <h3>Momentos clave</h3>
       <ul>${a.key_moments.map((m) => `<li>Jugada ${m.round_no}: ${esc(m.description)}</li>`).join("") || "<li>Partida tranquila.</li>"}</ul>
       <h3>Tu partida</h3>
@@ -1204,7 +1230,7 @@ function replayFromHistory(history, seats) {
     }
     const seatsHTML = seats.map((s) => `<div class="seat ${seatPosition(s.seat, 0)}">
       ${cur && cur.actor === s.seat && BUBBLE[cur.kind] ? `<span class="bubble">${BUBBLE[cur.kind]}</span>` : ""}
-      <div class="avatar">${faceSVG(s.seat, { pos: seatPosition(s.seat, 0), lookPos: "mesa", team: s.seat % 2 })}</div><div class="seat-name">${esc(s.name)}</div>
+      <div class="avatar">${faceSVG(s.seat, { pos: seatPosition(s.seat, 0), lookPos: "mesa", team: s.seat % 2, avatar: s.avatar })}</div><div class="seat-name">${esc(s.name)}</div>
       ${hands ? `<div class="hand">${hands[String(s.seat)].map((c) => cardHTML(c, { small: true })).join("")}</div>` : '<div class="backs" role="img" aria-label="Mano no revelada">' + '<span class="back"></span>'.repeat(4) + "</div>"}</div>`).join("");
     document.getElementById("replay-table").innerHTML = seatsHTML +
       `<div class="center"><div><div class="lance-title">${esc(lance)}</div><div class="bet-info">A ${score[0]} – B ${score[1]}</div><div class="bet-info">${esc(cur ? eventText(cur, names) : "")}</div></div></div>`;

@@ -44,6 +44,9 @@ class AgentContext:
     player_ids: dict[int, str] = field(default_factory=dict)
     reports: dict[str, AgentReport] = field(default_factory=dict)
     deep: bool = False
+    shared: dict[str, Any] = field(default_factory=dict)
+    """Representación probabilística común (creencias, valores de las acciones) que los
+    agentes matemáticos comparten entre sí (ver ``agents/mathematical.py``)."""
 
     def estimate(self, agent: str, key: str, default: float = 0.5) -> Estimate:
         report = self.reports.get(agent)
@@ -78,6 +81,9 @@ class Decision:
     agents_consulted: tuple[str, ...]
     alternatives: tuple[ScoredAction, ...] = ()
     narrative: str = ""
+    math: dict[str, Any] | None = None
+    """Explicación matemática estructurada (nivel matemático): información conocida y
+    desconocida, método, probabilidades con su incertidumbre y EV de cada acción."""
 
     def explanation(self) -> dict[str, Any]:
         """DecisionExplanation: para depuración, modo desarrollo y la defensa."""
@@ -93,6 +99,7 @@ class Decision:
                 for a in self.alternatives
             ],
             "narrative": self.narrative,
+            **({"matematica": self.math} if self.math is not None else {}),
         }
 
 

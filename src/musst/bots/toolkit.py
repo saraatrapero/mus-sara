@@ -89,22 +89,12 @@ def sample_world(
 
 
 def lance_keys(lance: str, world: dict[int, tuple[Card, ...]]) -> dict[int, tuple[int, ...]]:
-    if lance == "grande":
-        return {s: ev.grande_key(h) for s, h in world.items()}
-    if lance == "chica":
-        return {s: ev.chica_key(h) for s, h in world.items()}
-    if lance == "pares":
-        return {s: ev.pairs(h).key for s, h in world.items() if ev.pairs(h).has_pairs}
-    if lance == "juego":
-        return {s: ev.juego_key(h) for s, h in world.items() if ev.has_juego(h)}
-    return {s: ev.punto_key(h) for s, h in world.items()}
+    return ev.lance_keys(lance, world)
 
 
 def lance_winner(lance: str, world: dict[int, tuple[Card, ...]], mano: int) -> int | None:
-    keys = lance_keys(lance, world)
-    if not keys:
-        return None
-    return ev.best_seat(keys, speaking_order(mano))
+    """Ganador del lance con las reglas del motor (:func:`musst.engine.evaluation.lance_winner`)."""
+    return ev.lance_winner(lance, world, speaking_order(mano))
 
 
 @dataclass(frozen=True)
@@ -171,6 +161,19 @@ def hand_strength(hand: Sequence[Card], lance: str) -> float:
         order = ev.JUEGO_ORDER.index(total)
         return 1.0 - order * 0.11
     return min(1.0, max(0.0, (total - 20) / 10))
+
+
+LANCE_WEIGHTS = {"grande": 0.3, "chica": 0.15, "pares": 0.3, "juego": 0.35, "punto": 0.05}
+
+
+def hand_value(hand: Sequence[Card]) -> float:
+    """Valor global de una mano (media ponderada de su fuerza en cada lance), en [0, 1]."""
+    juego = ev.total_points(hand) >= 31
+    return sum(
+        w * hand_strength(hand, lance)
+        for lance, w in LANCE_WEIGHTS.items()
+        if lance != ("punto" if juego else "juego")
+    )
 
 
 def strength_percentile(

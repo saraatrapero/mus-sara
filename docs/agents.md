@@ -9,6 +9,7 @@ Diseño completo: [design/06-agentes.md](design/06-agentes.md). Código: `src/mu
 | Sencillo | `SimpleBot` | Heurísticas de fuerza de mano por lance; ruido del 15 % y faroles ocasionales (errores razonables) |
 | Medio | `AgentBot("medio")` | Agentes de cartas, probabilidad (Monte Carlo, 90 muestras) y marcador |
 | Profesional | `AgentBot("profesional")` | Todos los agentes + PlayerModel con memoria + farol + pareja (300-800 muestras) |
+| Matemático | `AgentBot("matematico")` / `MathBot` | Agentes bayesiano, analista, evaluador y juez matemático: Monte Carlo sin sesgo + Bayes + valor esperado de P(ganar la partida). Ver [Motor probabilístico](probabilidad.md) |
 
 ### Qué hace cada nivel (diferencias claras)
 
@@ -85,3 +86,14 @@ bot.last_decision.explanation()
 
 En el servidor, las explicaciones se guardan por partida y solo se ven en el modo desarrollo
 (`MUSST_DEV_MODE=1`, ruta `/api/dev/games/{id}`). Nunca se envían al jugador durante la partida.
+
+## Personajes de la mesa
+
+En la web, cada bot de la mesa es un **personaje de parodia** distinto, con apodo inventado
+(sin nombres reales): La Marquesa, El Tentador, La Superviviente, El Tronista, La Abuela del
+Mus, El de la Verbena, El Presentador y La Influencer (los mismos personajes de la app de
+Render). El servidor los reparte con la semilla de la partida (`server/personajes.py`); las
+caricaturas y las frases están en `server/static/personajes.js`. Las caricaturas miran a
+donde mira cada jugador y hacen los gestos oficiales de las señas; el bocadillo dice siempre
+la jugada y, a veces, la coletilla del personaje. Los personajes son solo de presentación:
+el nivel de juego (sencillo, medio, profesional) no cambia.

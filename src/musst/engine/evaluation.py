@@ -7,11 +7,17 @@ Los empates los resuelve :func:`best_seat` a favor del jugador más cercano al m
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import IntEnum
+from typing import TYPE_CHECKING
 
 from musst.engine.cards import Card, normalized_rank, point_value
+
+if TYPE_CHECKING:
+    from musst.engine.config import RulesConfig
+
+LANCES: tuple[str, ...] = ("grande", "chica", "pares", "juego", "punto")
 
 JUEGO_ORDER: tuple[int, ...] = (31, 32, 40, 37, 36, 35, 34, 33)
 """[CONVENCIÓN] Orden de los juegos de mejor a peor."""
@@ -97,3 +103,64 @@ def best_seat(keys: dict[int, tuple[int, ...]], order: Iterable[int]) -> int:
     if best is None:
         raise ValueError("No hay asientos que comparar")
     return best
+
+
+# ------------------------------------------------------------------ resolución de un lance
+# Funciones puras: las usa el propio motor (MusGame) y cualquier módulo que necesite saber quién
+# gana un lance con unas manos dadas (bots, análisis, motor probabilístico). Así las reglas
+# existen en un único sitio.
+def lance_keys(
+    lance: str, hands: Mapping[int, Sequence[Card]], eight_kings: bool = True
+) -> dict[int, tuple[int, ...]]:
+    """Clave de cada asiento que juega el lance (en pares y juego, solo quien lo tiene)."""
+    if lance == "grande":
+        return {s: grande_key(h, eight_kings) for s, h in hands.items()}
+    if lance == "chica":
+        return {s: chica_key(h, eight_kings) for s, h in hands.items()}
+    if lance == "pares":
+        out = {}
+        for s, h in hands.items():
+            p = pairs(h, eight_kings)
+            if p.has_pairs:
+                out[s] = p.key
+        return out
+    if lance == "juego":
+        return {s: juego_key(h, eight_kings) for s, h in hands.items() if has_juego(h, eight_kings)}
+    if lance == "punto":
+        return {s: punto_key(h, eight_kings) for s, h in hands.items()}
+    raise ValueError(f"Lance desconocido: {lance}")
+
+
+def lance_winner(
+    lance: str, hands: Mapping[int, Sequence[Card]], order: Iterable[int], eight_kings: bool = True
+) -> int | None:
+    """Asiento que gana el lance; en empate, el más cercano al mano (primero de ``order``).
+
+    ``None`` si nadie juega el lance (nadie tiene pares, o nadie tiene juego)."""
+    keys = lance_keys(lance, hands, eight_kings)
+    if not keys:
+        return None
+    return best_seat(keys, order)
+
+
+def play_points(lance: str, team_hands: Iterable[Sequence[Card]], config: RulesConfig) -> int:
+    """Tantos de jugada que cobra una pareja al ganar pares, juego o punto [CONVENCIÓN]."""
+    k8 = config.eight_kings
+    if lance == "punto":
+        return config.punto_points
+    total = 0
+    for hand in team_hands:
+        if lance == "pares":
+            kind = pairs(hand, k8).kind
+            total += {
+                PairsKind.PAR: config.par_points,
+                PairsKind.MEDIAS: config.medias_points,
+                PairsKind.DUPLES: config.duples_points,
+            }.get(kind, 0)
+        elif lance == "juego":
+            points = total_points(hand, k8)
+            if points == 31:
+                total += config.juego_31_points
+            elif points > 31:
+                total += config.juego_points
+    return total
