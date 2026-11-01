@@ -4,6 +4,7 @@
 // ejecutándose en este navegador con Pyodide (worker.js). Lo decide <meta name="musst-backend">.
 
 import * as cloud from "./cloud.js";
+import { AVISO, MOMENTO, PERSONAJES, caricatureSVG, frase } from "./personajes.js";
 import { DEFAULT_ADS, DRINKS, backSVG, cleanAds, drinkSVG } from "./publicidad.js";
 
 const $main = document.getElementById("main");
@@ -101,7 +102,34 @@ async function localApi(path, method, body, token) {
   return reply.data;
 }
 
-async function api(path, { method = "GET", body, token } = {}) {
+async function api(path, opts = {}) {
+  const room = current?.room;
+  const game = current && path.startsWith(`/api/games/${current.id}`);
+  if (room?.guest && game) return roomGuestApi(path.slice(`/api/games/${current.id}`.length).replace(/^\//, ""), opts).then(withCharacters);
+  const data = await apiCall(path, opts);
+  if (room?.host && game) schedulePublish();
+  return withCharacters(data);
+}
+// Partidas creadas antes de los personajes (o guardadas en el navegador): sus bots no traen
+// personaje. Se les asigna uno estable para esa partida (sin repetir) y, si se llamaban
+// «Bot …», su apodo.
+function withCharacters(data) {
+  const obs = data?.observation || data;
+  if (!obs || !Array.isArray(obs.seats)) return data;
+  const taken = new Set(obs.seats.map((x) => x.avatar).filter((a) => PERSONAJES[a]));
+  const ids = Object.keys(PERSONAJES);
+  const seed = [...String(obs.game_id || "")].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+  for (const seat of obs.seats) {
+    if (seat.kind !== "bot" || PERSONAJES[seat.avatar]) continue;
+    let k = (seed + seat.seat * 3) % ids.length;
+    while (taken.has(ids[k])) k = (k + 1) % ids.length;
+    seat.avatar = ids[k];
+    taken.add(ids[k]);
+    if (/^Bot( |$)/.test(seat.name || "")) seat.name = PERSONAJES[ids[k]].apodo;
+  }
+  return data;
+}
+async function apiCall(path, { method = "GET", body, token } = {}) {
   if (LOCAL) return localApi(path, method, body, token);
   const headers = { "Content-Type": "application/json" };
   if (token) headers["X-Seat-Token"] = token;
@@ -270,6 +298,16 @@ function talk(e) {
   if (!opts) return BUBBLE[e.kind];
   return opts[(e.seq * 7 + (e.actor ?? 0)) % opts.length];
 }
+// Los bots con personaje dicen la jugada y, una de cada dos veces, su coletilla.
+function talkAs(e, seat) {
+  const base = talk(e);
+  const momento = MOMENTO[e.kind];
+  const q = seat && seat.kind === "bot" && momento ? frase(seat.avatar, momento, e.seq) : null;
+  if (!q || !base || e.seq % 2) return base;
+  return /[.!?…]$/.test(base) ? `${base} ${q}` : `${base}. ${q}`;
+}
+// Puntos de juego de una mano (para ver quién lleva la 31 al enseñar las cartas).
+const handPoints = (codes) => codes.reduce((t, c) => { const r = parseCard(c).rank; return t + (r === 2 ? 1 : r >= 10 || r === 3 ? 10 : r); }, 0);
 const BANTER_WIN = ["¡Esa era nuestra!", "Buena jugada, compañero", "Así se juega"];
 const BANTER_LOSE = ["La próxima es nuestra", "Qué cartas más malas…", "Uf, no hubo suerte"];
 
@@ -322,7 +360,7 @@ const SOUND_OF = {
 };
 
 // ------------------------------------------------------------------ navegación
-const views = { home, learn, arena, stats, settings: settingsView, game: () => renderGame(), tutorial, training, admin: adminView, champs: champsView, champ: champView, profile };
+const views = { home, learn, arena, stats, settings: settingsView, game: () => renderGame(), tutorial, training, admin: adminView, champs: champsView, champ: champView, profile, room: roomLobby };
 const OPEN_VIEWS = new Set(["learn", "tutorial", "settings"]);
 function loginGate() {
   $main.append(h(`<div class="page"><section class="panel stack login-gate">
@@ -386,13 +424,19 @@ function home() {
         <details class="more"><summary>Más opciones</summary>
           <div class="form-grid">
             <label class="field">Partida a<select name="target"><option value="40">40 tantos</option><option value="30">30 tantos</option><option value="20">20 tantos (corta)</option></select></label>
-            <label class="field">Nombre compañero/a<input name="n2" maxlength="24" placeholder="Compañero"></label>
-            <label class="field">Nombre rival 1<input name="n1" maxlength="24" placeholder="Bot 1"></label>
-            <label class="field">Nombre rival 2<input name="n3" maxlength="24" placeholder="Bot 2"></label>
+            <label class="field">Nombre compañero/a<input name="n2" maxlength="24" placeholder="Personaje al azar"></label>
+            <label class="field">Nombre rival 1<input name="n1" maxlength="24" placeholder="Personaje al azar"></label>
+            <label class="field">Nombre rival 2<input name="n3" maxlength="24" placeholder="Personaje al azar"></label>
           </div>
         </details>
-        <button class="btn primary big">Empezar a jugar</button>
+        <p class="muted" id="room-hint" hidden>${cloud.cloudEnabled() ? "Se abre una sala con un código: los demás se unen desde su móvil u ordenador." : "Sin cuentas compartidas (Supabase) se juega pasándose este mismo dispositivo."}</p>
+        <button class="btn primary big" id="start-btn">Empezar a jugar</button>
       </form>
+      <p class="muted parody">🎭 ${esc(AVISO)}</p>
+      ${cloud.cloudEnabled() ? `<form id="join-room" class="join-room">
+        <label class="field">¿Te han pasado un código?<input name="code" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="Código de la sala" required pattern="[A-Za-z0-9]{6}"></label>
+        <button class="btn">Unirme a la sala</button>
+      </form>` : ""}
     </section>
     <section class="panel score-help" aria-label="Cómo se cuentan los tantos">
       <span class="kicker">El conteo</span><h2 class="card-title">Cómo se cuentan los tantos</h2>
@@ -403,9 +447,21 @@ function home() {
   </div>`));
   document.querySelectorAll('input[name="signals"]').forEach((r) => (r.onchange = () => { settings.signals = r.value === "1"; saveSettings(); }));
   document.getElementById("quick").onclick = () => startGame({ mode: "rapida", rivals: "medio", partner: "sencillo" });
+  const syncPlayers = () => {
+    const many = document.querySelector('input[name="players"]:checked').value !== "bot";
+    document.getElementById("room-hint").hidden = !many;
+    document.getElementById("start-btn").textContent = many && cloud.cloudEnabled() ? "Crear sala" : "Empezar a jugar";
+  };
+  document.querySelectorAll('input[name="players"]').forEach((r) => (r.onchange = syncPlayers));
+  const joinForm = document.getElementById("join-room");
+  if (joinForm) joinForm.onsubmit = (e) => { e.preventDefault(); joinRoom(new FormData(joinForm).get("code")); };
   document.getElementById("custom").onsubmit = (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
+    if (f.get("players") !== "bot" && cloud.cloudEnabled()) {
+      createRoom(f.get("players"), { rivals: f.get("rivals"), target: Number(f.get("target")), signals: settings.signals !== false });
+      return;
+    }
     const names = {};
     if (f.get("n1")) names["1"] = f.get("n1");
     if (f.get("n3")) names["3"] = f.get("n3");
@@ -456,7 +512,7 @@ const LOOKS = [
   { skin: "#f5d6b8", hair: "#a8a39a", style: "calvo" }, { skin: "#c98f68", hair: "#1d1612", style: "rizado" },
 ];
 const POS_VEC = { bottom: [0, 1], right: [1, 0], top: [0, -1], left: [-1, 0] };
-function faceSVG(seat, { pos, lookPos, gesture = null, team = 0, bot = true }) {
+function faceSVG(seat, { pos, lookPos, gesture = null, team = 0, bot = true, avatar = null }) {
   const L = LOOKS[seat % 4];
   const me = POS_VEC[pos] || [0, 1];
   const to = lookPos === "mesa" ? [0, 0] : POS_VEC[lookPos] || [0, 0];
@@ -468,14 +524,15 @@ function faceSVG(seat, { pos, lookPos, gesture = null, team = 0, bot = true }) {
   const eye = (x, closed) => (closed ? `<path d="M${x - 4} 30q4 2 8 0" stroke="#2a1d14" stroke-width="1.6" fill="none"/>`
     : `<ellipse cx="${x}" cy="30" rx="4" ry="3.4" fill="#fff"/><circle cx="${x + dx}" cy="${30 + dy}" r="1.9" fill="#2a1d14"/>`);
   const browY = g === "duples" ? 21 : 24;
-  const mouth = {
+  const signMouth = {
     dos_reyes: '<path d="M26 44q6 3 12 0" stroke="#7a2a2a" stroke-width="2" fill="none"/><rect x="28" y="41.5" width="8" height="2.4" rx="1" fill="#fff"/>',
     dos_ases: '<path d="M27 43q5 3 10 0" stroke="#7a2a2a" stroke-width="1.8" fill="none"/><path d="M29.5 44h5v4a2.5 2.5 0 0 1-5 0z" fill="#e46b7a"/>',
     medias_ases: '<path d="M27 43q5 3 10 0" stroke="#7a2a2a" stroke-width="1.8" fill="none"/><path d="M34 44h5v3.5a2.5 2.5 0 0 1-5 0z" fill="#e46b7a"/>',
     medias: '<path d="M32 44q4 1.5 8-1" stroke="#7a2a2a" stroke-width="2" fill="none"/>',
     medias_reyes: '<path d="M32 44q4 1.5 8-1" stroke="#7a2a2a" stroke-width="2" fill="none"/>',
     juego: '<ellipse cx="32" cy="44" rx="3" ry="2.4" fill="#b8475a"/>',
-  }[g] || '<path d="M27 43q5 3 10 0" stroke="#7a2a2a" stroke-width="1.8" fill="none"/>';
+  }[g] || null;
+  const mouth = signMouth || '<path d="M27 43q5 3 10 0" stroke="#7a2a2a" stroke-width="1.8" fill="none"/>';
   const hair = {
     corto: `<path d="M18 26q0-14 14-14t14 14q-4-7-14-7t-14 7z" fill="${L.hair}"/>`,
     boina: `<ellipse cx="32" cy="16" rx="15" ry="5" fill="#2d2d38"/><circle cx="32" cy="11" r="1.6" fill="#2d2d38"/>`,
@@ -484,6 +541,10 @@ function faceSVG(seat, { pos, lookPos, gesture = null, team = 0, bot = true }) {
   }[L.style];
   const shL = g === "treinta" || g === "veintinueve" ? -4 : 0, shR = g === "treinta" ? -4 : 0;
   const tilt = g === "pares" ? "rotate(-12 32 34)" : "";
+  if (avatar && PERSONAJES[avatar]) {
+    // Caricatura del personaje: mismos ojos, cejas, boca de seña, cabeza y hombros.
+    return caricatureSVG(avatar, { gesture: g, eyes: eye(26, closedL) + eye(38, closedR), mouth: signMouth, browY: browY + 1, tilt, shoulders: shL });
+  }
   const color = team === 0 ? "var(--team-a)" : "var(--team-b)";
   return `<svg class="face ${g ? "gesturing" : ""}" viewBox="0 0 64 64" aria-hidden="true">
     <path d="M6 64q2-${12 - shL / 2} 14-${14 - shL}h24q12 ${2 + shR} 14 ${14 + shR / 2}z" fill="${color}"/>
@@ -721,13 +782,13 @@ function renderGame(bubbles = current?.bubbles || {}) {
     const target = obs.gazes && obs.gazes.length ? obs.gazes[s.seat] : undefined;
     const lookPos = target == null ? "mesa" : seatPosition(target, me);
     const gaze = target === undefined ? "" : `<span class="chip gaze ${target === me && s.seat !== me ? "on-me" : ""}">👀 ${target == null ? "la mesa" : target === me ? (s.seat === me ? "" : "te mira") : esc(names[target])}</span>`;
-    const face = faceSVG(s.seat, { pos, lookPos, gesture: current.gestures?.[s.seat], team: s.team, bot: s.kind === "bot" });
+    const face = faceSVG(s.seat, { pos, lookPos, gesture: current.gestures?.[s.seat], team: s.team, bot: s.kind === "bot", avatar: s.avatar });
     const canLook = obs.gazes && obs.gazes.length && s.seat !== me && !obs.finished;
     const avatar = canLook
       ? `<button class="avatar face-btn ${obs.gazes[me] === s.seat ? "watched" : ""}" data-look="${s.seat}" aria-label="Mirar a ${esc(s.name)}" title="Mirar a ${esc(s.name)}">${face}</button>`
       : `<div class="avatar" aria-hidden="true">${face}</div>`;
     return `<div class="seat ${pos} ${obs.turn === s.seat && !obs.awaiting_deal ? "turn" : ""} ${lit ? "lit" : ""}" style="--team-color:var(${s.team === 0 ? "--team-a" : "--team-b"})">
-      ${bubble}${avatar}${current.gestures?.[s.seat] ? `<span class="chip sig-now" role="status">${SIGNAL_ICON[current.gestures[s.seat]] ?? "✋"} ${esc(SIGNALS[current.gestures[s.seat]]?.[1] ?? "")}</span>` : ""}
+      <div class="avatar-wrap">${bubble}${avatar}</div>${current.gestures?.[s.seat] ? `<span class="chip sig-now" role="status">${SIGNAL_ICON[current.gestures[s.seat]] ?? "✋"} ${esc(SIGNALS[current.gestures[s.seat]]?.[1] ?? "")}</span>` : ""}
       <div class="seat-name">${esc(s.name)}${s.seat === me ? " (tú)" : ""}${s.level ? ` <span class="chip">${esc(s.level)}</span>` : ""}</div>
       <div class="seat-meta"><span class="chip">${s.team === 0 ? "◆ Pareja A" : "● Pareja B"}</span>${obs.mano === s.seat ? '<span class="chip mano">mano</span>' : ""}${decl("pares")}${decl("juego")}${status}${gaze}</div>
       ${pileHTML(obs, s.seat)}
@@ -807,8 +868,8 @@ function renderGame(bubbles = current?.bubbles || {}) {
       ${seatHTML(obs.seats[me])}
       ${finished ? "" : deck}
       <div class="table-hand">
-    ${handoff != null || review ? "" : `<div class="my-cards"><div class="hand-row"><div class="hand" id="my-hand" aria-label="Tus cartas, de mayor a menor">${sortHand(obs.hand).map((c) => cardHTML(c, { button: obs.phase === "discard" && myTurn, pressed: current.discard.has(c) })).join("")}</div><span class="drinkbox">${drinkSVG(ads)}</span></div>
-      <div class="jugadas" aria-label="Lo que llevas">${jugadaChips(obs.hand)}</div></div>`}
+    ${handoff != null || review ? "" : `<div class="my-cards"><div class="hand" id="my-hand" aria-label="Tus cartas, de mayor a menor">${sortHand(obs.hand).map((c) => cardHTML(c, { button: obs.phase === "discard" && myTurn, pressed: current.discard.has(c) })).join("")}</div>
+      <div class="my-extras"><span class="drinkbox">${drinkSVG(ads)}</span><div class="jugadas" aria-label="Lo que llevas">${jugadaChips(obs.hand)}</div></div></div>`}
     <div class="status-line" id="status"></div>
     <div class="actions" id="actions" role="group" aria-label="Acciones disponibles"></div>
       </div>
@@ -819,6 +880,7 @@ function renderGame(bubbles = current?.bubbles || {}) {
     </div>
     <div class="row game-tools">
       <button class="btn ghost" id="help-btn" aria-expanded="${current.help}">? ¿Qué puedo hacer?</button>
+      <button class="btn ghost" id="calc-btn">🧮 Ver el cálculo</button>
       ${finished ? '<button class="btn primary" id="summary-btn">Ver resumen</button>' : ""}
       <button class="btn ghost" id="log-btn">Historial de la jugada</button>
       ${finished ? "" : '<button class="btn ghost" id="mic-btn" title="Di tu jugada en voz alta">🎤 Jugar hablando</button>'}
@@ -838,6 +900,7 @@ function renderGame(bubbles = current?.bubbles || {}) {
   document.querySelectorAll("[data-signal]").forEach((b) => (b.onclick = () => makeSignal(b.dataset.signal)));
   scheduleTick();
   document.getElementById("help-btn").onclick = () => { current.help = !current.help; renderGame(); };
+  document.getElementById("calc-btn").onclick = showCalculo;
   document.getElementById("log-btn").onclick = () => showLog();
   if (finished) document.getElementById("summary-btn").onclick = () => showSummary();
   if (current.help) loadHelp();
@@ -955,7 +1018,7 @@ async function animateTo(obs) {
         await sleep(700);
       } else if (bubble && e.round === prevRound && (e.actor !== obs.seat || declared)) {
         // Lo que dice cada jugador se queda en su bocadillo hasta el siguiente lance.
-        const phrase = human && !declared ? myPhrase({ type: { BetPlaced: "bet", BetRaised: "raise", OrdagoDeclared: "ordago", BetAccepted: "accept", OrdagoAccepted: "accept", BetRejected: "reject", Passed: "pass", MusRequested: "mus", MusCut: "cut" }[e.kind] ?? "", amount: e.payload.amount }) || BUBBLE[e.kind] : talk(e);
+        const phrase = human && !declared ? myPhrase({ type: { BetPlaced: "bet", BetRaised: "raise", OrdagoDeclared: "ordago", BetAccepted: "accept", OrdagoAccepted: "accept", BetRejected: "reject", Passed: "pass", MusRequested: "mus", MusCut: "cut" }[e.kind] ?? "", amount: e.payload.amount }) || BUBBLE[e.kind] : talkAs(e, obs.seats[e.actor]);
         setStatus(text);
         await speakWithBubble(phrase, e.actor, e.kind === "PairsDeclared" || e.kind === "GameDeclared" ? 650 : 1100);
       } else if (e.kind === "HandsRevealed" && e.round === prevRound) {
@@ -963,6 +1026,9 @@ async function animateTo(obs) {
         current.obs = { ...current.obs, revealed_hands: e.payload.hands };
         renderGame();
         await sleep(1500);
+        // Un personaje que lleva la 31 lo celebra.
+        const proud = obs.seats.find((s) => s.kind === "bot" && frase(s.avatar, "revela_31") && handPoints(e.payload.hands[String(s.seat)] || []) === 31);
+        if (proud) await speakWithBubble(frase(proud.avatar, "revela_31", e.seq), proud.seat, 1200);
       } else if (e.kind === "SignalSeen" || (e.kind === "SignalMade" && e.actor !== obs.seat)) {
         // La seña se ve en su cara: el gesto oficial durante unos segundos.
         const from = e.payload.seat;
@@ -980,8 +1046,9 @@ async function animateTo(obs) {
         const theirs = lastPts.filter((x) => x.payload.team !== obs.team).reduce((t, x) => t + x.payload.points, 0);
         const bot = obs.seats.find((s) => s.kind === "bot" && s.team !== obs.team) || obs.seats.find((s) => s.kind === "bot");
         if (bot) {
-          const pool = (bot.team === obs.team ? mine >= theirs : theirs > mine) ? BANTER_WIN : BANTER_LOSE;
-          const phrase = pool[e.seq % pool.length];
+          const botWon = bot.team === obs.team ? mine >= theirs : theirs > mine;
+          const pool = botWon ? BANTER_WIN : BANTER_LOSE;
+          const phrase = frase(bot.avatar, botWon ? "gana_lance" : "pierde_lance", e.seq) || pool[e.seq % pool.length];
           current.bubbles = {};
           await speakWithBubble(phrase, bot.seat, 1100);
         }
@@ -1110,6 +1177,57 @@ function schedulePoll() {
   }, 1500);
 }
 
+// ------------------------------------------------------------------ ver el cálculo
+// Probabilidades y valor esperado para MI jugada, con solo lo que yo sé (mi observación):
+// la misma cadena del bot matemático (docs/probabilidad.md), sin jugar por mí.
+const ACTION_ES = { PASS: "Paso", BET: "Envido", RAISE: "Subo", ORDAGO: "Órdago", ACCEPT: "Quiero", ACCEPT_NO_LOSE: "Quiero y no pierdo", REJECT: "No quiero" };
+const actionEs = (code) => { const m = String(code).match(/^([A-Z_]+?)(?:_(\d+))?$/); return m ? `${ACTION_ES[m[1]] || m[1]}${m[2] ? " " + m[2] : ""}` : code; };
+const pctEs = (p) => (p == null ? "—" : `${(100 * p).toFixed(1).replace(".", ",")} %`);
+const ic = (e) => (e && e.ic95 ? ` <small class="muted">[${pctEs(e.ic95[0])} – ${pctEs(e.ic95[1])}]</small>` : e && e.exacta ? ' <small class="muted">(exacta)</small>' : "");
+async function showCalculo() {
+  openModal('<h2 id="modal-title">🧮 Calculando…</h2><p class="muted">Repartos posibles de las cartas que no ves + Bayes con lo que han hecho los demás.</p>');
+  try {
+    const r = await api(`/api/games/${current.id}/calculo`, { token: current.token });
+    if (r.error) throw new Error(r.error);
+    openModal(calculoHTML(r));
+  } catch (err) {
+    openModal(`<h2 id="modal-title">🧮 Ver el cálculo</h2><p>${esc(err.message)}</p><div class="row"><button class="btn ghost" data-close>Cerrar</button></div>`);
+  }
+}
+function calculoHTML(r) {
+  const st = r.estado, info = r.informacion_conocida, m = r.metodo;
+  const lanceName = (l) => LANCE[l] || { discard: "Descarte" }[l] || l;
+  const probs = Object.entries(r.probabilidades || {}).map(([l, p]) => `<tr${l === st.lance ? ' class="hl"' : ""}>
+      <td class="l">${lanceName(l)}</td><td>${pctEs(p.a_priori?.p)}</td><td><strong>${pctEs(p.a_posteriori.gana.p)}</strong>${ic(p.a_posteriori.gana)}</td>
+      <td>${pctEs(p.a_posteriori.pierde.p)}</td><td>${pctEs(p.a_posteriori.nadie.p)}</td></tr>`).join("");
+  const acciones = (r.acciones || []).map((a) => `<tr${a.accion === r.accion_elegida ? ' class="hl"' : ""}>
+      <td class="l">${a.accion === r.accion_elegida ? "⭐ " : ""}${esc(actionEs(a.accion))}</td><td><strong>${pctEs(a.ev_partida)}</strong></td>
+      <td>${a.ev_tantos == null ? "se juega la partida" : (a.ev_tantos > 0 ? "+" : "") + a.ev_tantos.toFixed(2).replace(".", ",")}</td>
+      <td>${a.p_quieren == null ? "—" : pctEs(a.p_quieren)}</td><td>${a.p_gano_si_quieren == null ? (a.p_gano == null ? "—" : pctEs(a.p_gano)) : pctEs(a.p_gano_si_quieren)}</td></tr>`).join("");
+  const ranked = r.acciones || [];
+  const best = ranked.find((a) => a.accion === r.accion_elegida), second = ranked.find((a) => a.accion !== r.accion_elegida);
+  const why = best ? `<p class="calc-why">Recomendada: <strong>${esc(actionEs(best.accion))}</strong>. Es la que más probabilidad esperada de ganar la partida te da:
+      ${pctEs(best.ev_partida)}${second ? ` frente a ${pctEs(second.ev_partida)} de ${esc(actionEs(second.accion))}` : ""}.
+      ${r.confianza != null ? `Probabilidad de que de verdad sea la mejor ≈ ${pctEs(r.confianza)}.` : ""}</p>` : `<p class="muted">${esc(r.justificacion || "")}</p>`;
+  return `<h2 id="modal-title">🧮 El cálculo de tu jugada · ${esc(lanceName(st.lance))}</h2>
+    <p>Marcador ${st.marcador.mi_pareja} – ${st.marcador.rivales} (a ${st.marcador.objetivo}).
+      Probabilidad de ganar la partida ahora: <strong>${pctEs(st.p_ganar_partida_ahora)}</strong>.</p>
+    <h3>Lo que sabes y lo que no</h3>
+    <ul><li>Tus cartas: ${info.mis_cartas.map(esc).join(" · ")}. Cartas que no ves: <strong>${r.informacion_desconocida.cartas_desconocidas}</strong>, repartidas entre los otros tres.</li>
+      <li>Lo que han hecho los demás (evidencia para Bayes): ${info.acciones_observadas.length ? info.acciones_observadas.map(esc).join("; ") : "nada todavía"}.</li></ul>
+    <h3>Probabilidad de que tu pareja gane cada lance</h3>
+    <div class="table-wrap"><table class="data calc"><thead><tr><th class="l">Lance</th><th>A priori</th><th>Con lo que has visto [IC 95 %]</th><th>Pierde</th><th>Nadie lo juega</th></tr></thead><tbody>${probs}</tbody></table></div>
+    ${acciones ? `<h3>Valor esperado de cada acción</h3>
+      <div class="table-wrap"><table class="data calc"><thead><tr><th class="l">Acción</th><th>P(ganar la partida)</th><th>Tantos esperados</th><th>P(lo quieren)</th><th>P(gano si lo quieren)</th></tr></thead><tbody>${acciones}</tbody></table></div>${why}` : `<p class="muted">${esc(r.justificacion)}</p>`}
+    <details class="more"><summary>Cómo se ha calculado</summary>
+      <ul><li><strong>Cartas</strong>: ${m.repartos} repartos de las cartas que no ves, compatibles con lo que se ha declarado (hipergeométrica multivariante, sin reemplazo).</li>
+        <li><strong>Bayes</strong>: P(H | E) ∝ P(E | H) · P(H). Cada acción de los demás cambia el peso de cada reparto, sin descartar ninguno (un envite puede ser un farol). Tamaño efectivo de muestra: ${m.ess_a_posteriori} de ${m.repartos}${m.converge ? "" : " (no ha llegado a converger)"}.</li>
+        <li><strong>Decisión</strong>: EV(a) = Σ P(s | E) · U(a, s), donde U es la probabilidad de ganar la partida tras el lance.</li>
+        <li>Monte Carlo: cada probabilidad lleva su intervalo de confianza; en otra jugada parecida los números varían un poco.</li></ul>
+      <p><a href="docs/probabilidad/" target="_blank" rel="noopener">Fórmulas, pruebas y experimentos completos</a></p></details>
+    <div class="row"><button class="btn ghost" data-close>Cerrar</button></div>`;
+}
+
 async function loadHelp() {
   try {
     const data = await api(`/api/games/${current.id}/help`, { token: current.token });
@@ -1136,6 +1254,11 @@ async function showSummary() {
     const s = a.stats;
     openModal(`
       <h2 id="modal-title">${won ? "Victoria" : "Derrota"} · ${a.result.reason === "ordago" ? "por órdago" : `${a.result.score[a.result.my_team]} – ${a.result.score[1 - a.result.my_team]}`}</h2>
+      ${(current.obs.seats || []).filter((x) => x.kind === "bot" && PERSONAJES[x.avatar]).map((x) => {
+        const theyWon = (x.seat % 2) === a.result.winner;
+        const q = frase(x.avatar, theyWon ? "gana_partida" : "pierde_partida", a.result.score[0] + a.result.score[1]);
+        return q ? `<p class="quote"><span class="quote-face">${faceSVG(x.seat, { pos: "bottom", lookPos: "mesa", avatar: x.avatar })}</span><strong>${esc(x.name)}:</strong> «${esc(q)}»</p>` : "";
+      }).join("")}
       <h3>Momentos clave</h3>
       <ul>${a.key_moments.map((m) => `<li>Jugada ${m.round_no}: ${esc(m.description)}</li>`).join("") || "<li>Partida tranquila.</li>"}</ul>
       <h3>Tu partida</h3>
@@ -1193,7 +1316,7 @@ function replayFromHistory(history, seats) {
     }
     const seatsHTML = seats.map((s) => `<div class="seat ${seatPosition(s.seat, 0)}">
       ${cur && cur.actor === s.seat && BUBBLE[cur.kind] ? `<span class="bubble">${BUBBLE[cur.kind]}</span>` : ""}
-      <div class="avatar">${faceSVG(s.seat, { pos: seatPosition(s.seat, 0), lookPos: "mesa", team: s.seat % 2 })}</div><div class="seat-name">${esc(s.name)}</div>
+      <div class="avatar">${faceSVG(s.seat, { pos: seatPosition(s.seat, 0), lookPos: "mesa", team: s.seat % 2, avatar: s.avatar })}</div><div class="seat-name">${esc(s.name)}</div>
       ${hands ? `<div class="hand">${hands[String(s.seat)].map((c) => cardHTML(c, { small: true })).join("")}</div>` : '<div class="backs" role="img" aria-label="Mano no revelada">' + '<span class="back"></span>'.repeat(4) + "</div>"}</div>`).join("");
     document.getElementById("replay-table").innerHTML = seatsHTML +
       `<div class="center"><div><div class="lance-title">${esc(lance)}</div><div class="bet-info">A ${score[0]} – B ${score[1]}</div><div class="bet-info">${esc(cur ? eventText(cur, names) : "")}</div></div></div>`;
@@ -1435,7 +1558,7 @@ function loginDialog() {
       $modal.close();
       await loadUser();
       toast(kind === "register" ? (canAdmin() ? "Cuenta creada: eres administrador/a" : "Cuenta creada") : `Hola, ${user ? user.username : ""}`);
-      go("home");
+      if (pendingRoom) { const code = pendingRoom; pendingRoom = null; joinRoom(code); } else go("home");
     } catch (err) { toast(err.message); }
   };
 }
@@ -1471,6 +1594,14 @@ function updateAccount() {
     admin = document.createElement("button"); admin.dataset.nav = "admin"; admin.textContent = "Admin"; nav.append(admin);
   } else if (!canAdmin() && admin) admin.remove();
 }
+// Explica en cristiano los fallos más habituales al guardar la publicidad en Supabase.
+function adsErrorHint(message) {
+  if (/Solo administradores/i.test(message)) return `${message}. Si te acaban de hacer administradora, sal de tu cuenta y vuelve a entrar.`;
+  if (/admin_set_ads|schema cache|does not exist/i.test(message)) return `${message}. Falta aplicar en Supabase el schema.sql más reciente (SQL Editor).`;
+  if (/JWT|session|token/i.test(message)) return `${message}. La sesión ha caducado: sal y vuelve a entrar.`;
+  if (/payload|too large|413/i.test(message)) return `${message}. El logo pesa demasiado: prueba con una imagen más pequeña.`;
+  return message;
+}
 const canAdmin = () => (cloud.cloudEnabled() ? cloud.isAdmin() : user?.role === "admin");
 // El panel funciona igual con Supabase o con las cuentas del propio navegador / servidor.
 const adminApi = {
@@ -1492,7 +1623,7 @@ async function attachCloudProfile(prof) {
 }
 const synced = new Set();
 async function syncFinishedGame(gameId) {
-  if (synced.has(gameId)) return;
+  if (synced.has(gameId) || current?.room?.guest) return;
   synced.add(gameId);
   if (!LOCAL || !cloud.cloudEnabled() || !cloud.cloudProfile() || !user) return;
   try {
@@ -1505,6 +1636,186 @@ async function loadUser() {
   try { user = await api("/api/me"); } catch { user = null; }
   if (user && user.settings && Object.keys(user.settings).length) { settings = { ...settings, ...user.settings }; applySettings(); }
   updateAccount();
+}
+
+// ------------------------------------------------------------------ SALAS ONLINE
+// «Dos personas» o «Cuatro personas» en dispositivos distintos. Quien crea la sala recibe un
+// código; los demás se unen con él (o con el enlace #sala/CÓDIGO). La partida corre en el
+// navegador de la anfitriona: después de cada cambio publica a cada persona solo lo que ve su
+// asiento, y recoge y aplica lo que hacen los demás. Los huecos que nadie ocupa los juegan bots.
+const ROOM_SEATS = { pareja: [2], cuatro: [2, 1, 3] };  // primero el compañero, luego los rivales
+const ROOM_PATHS = new Set(["action", "deal", "look", "signal"]);
+const SEAT_ROLE = { 0: "Quien crea la sala", 2: "Compañero/a (enfrente)", 1: "Rival (a la derecha)", 3: "Rival (a la izquierda)" };
+const roomLink = (code) => `${location.origin}${location.pathname}#sala/${code}`;
+let pendingRoom = null;
+let roomLoop = 0;
+
+async function createRoom(players, roomSettings) {
+  try { go("room", await cloud.roomCreate(players, roomSettings)); } catch (err) { toast(err.message); }
+}
+async function joinRoom(code) {
+  code = String(code || "").trim().toUpperCase();
+  if (!user) { pendingRoom = code; loginDialog(); return; }
+  try { await cloud.roomJoin(code); go("room", code); } catch (err) { toast(err.message); }
+}
+
+// Sala de espera: código, enlace y quién se ha sentado ya (se refresca sola).
+function roomLobby(code) {
+  $main.append(h('<div class="page stack" id="room">Cargando…</div>'));
+  const loop = ++roomLoop;
+  const refresh = async () => {
+    const el = document.getElementById("room");
+    if (!el || loop !== roomLoop) return;
+    let r;
+    try { r = await cloud.room(code); } catch (err) { el.textContent = err.message; return; }
+    if (!document.getElementById("room") || loop !== roomLoop) return;
+    if (!r) {
+      el.innerHTML = '<section class="panel stack"><h1 class="page-title">Esta sala ya no existe</h1><p>Quien la creó la ha cerrado.</p><div><button class="btn primary" data-nav="home">Volver</button></div></section>';
+      return;
+    }
+    const host = r.host === myId();
+    if (r.status === "jugando" && !host) {
+      try { await enterRoomAsGuest(code); return; } catch { /* aún no ha publicado: se reintenta */ }
+    }
+    const order = [0, ...ROOM_SEATS[r.players]];
+    const guests = ROOM_SEATS[r.players].filter((s) => r.seats[s]).length;
+    el.innerHTML = `<section class="panel stack room">
+      <span class="kicker">Sala ${r.players === "pareja" ? "de dos personas" : "de cuatro personas"}</span>
+      <h1 class="page-title">Código de la sala</h1>
+      <p class="room-code" aria-label="Código ${[...code].join(" ")}">${code}</p>
+      <p>Pásale el código a ${r.players === "pareja" ? "tu compañero/a" : "los demás"}: en la web, en «Jugar», escriben el código en «Unirme a la sala». O mándales el enlace:</p>
+      <div class="row"><input class="room-link" readonly value="${esc(roomLink(code))}" aria-label="Enlace de la sala"><button class="btn" id="room-copy">Copiar enlace</button>${navigator.share ? '<button class="btn" id="room-share">Compartir</button>' : ""}</div>
+      <ul class="room-seats">${order.map((s) => `<li class="${r.seats[s] ? "taken" : "free"}"><span class="muted">${SEAT_ROLE[s]}</span>
+        <strong>${r.seats[s] ? `👤 ${esc(r.seats[s].name)}${r.seats[s].id === myId() ? " (tú)" : ""}` : "⏳ Esperando…"}</strong></li>`).join("")}</ul>
+      ${r.status === "esperando"
+        ? host
+          ? `<p class="muted">${!guests ? "Cuando se una alguien, podrás empezar." : guests === ROOM_SEATS[r.players].length ? "¡Ya estáis todos!" : "Puedes empezar ya: los asientos vacíos los juega un bot."}</p>
+             <div class="row"><button class="btn primary" id="room-start" ${guests ? "" : "disabled"}>Empezar la partida</button><button class="btn ghost" id="room-close">Cerrar la sala</button></div>`
+          : `<p>Esperando a que <strong>${esc(r.seats[0]?.name ?? "quien creó la sala")}</strong> empiece la partida…</p>
+             <div class="row"><button class="btn ghost" id="room-leave">Salir de la sala</button></div>`
+        : r.status === "terminada" ? '<p>Esta partida ya ha terminado.</p><div><button class="btn primary" data-nav="home">Volver</button></div>'
+        : "<p>La partida está empezando…</p>"}
+    </section>`;
+    const on = (id, fn) => { const b = document.getElementById(id); if (b) b.onclick = fn; };
+    on("room-copy", async () => { try { await navigator.clipboard.writeText(roomLink(code)); toast("Enlace copiado"); } catch { el.querySelector(".room-link").select(); } });
+    on("room-share", () => navigator.share({ title: "MUS.ST", text: `Únete a mi partida de mus. Código: ${code}`, url: roomLink(code) }).catch(() => {}));
+    on("room-start", async (e) => { e.target.disabled = true; roomLoop += 1; try { await startRoom(r); } catch (err) { toast(err.message); go("room", code); } });
+    on("room-close", async () => { roomLoop += 1; try { await cloud.roomLeave(code); } catch { /* ya no existe */ } go("home"); });
+    on("room-leave", async () => { roomLoop += 1; try { await cloud.roomLeave(code); } catch (err) { toast(err.message); } go("home"); });
+    if (r.status !== "terminada") setTimeout(refresh, 2000);
+  };
+  refresh();
+}
+
+// Anfitriona: crea la partida en su navegador con una persona en cada asiento ocupado.
+async function startRoom(r) {
+  const humans = Object.keys(r.seats).map(Number).filter((s) => s !== 0);
+  const st = r.settings || {};
+  const data = await api("/api/games", { method: "POST", body: {
+    mode: "personalizada", players: r.players, human_seats: humans, rivals: st.rivals || "medio", partner: st.rivals || "medio",
+    target: st.target || 40, signals: st.signals !== false, name: user?.username || "Tú",
+    names: Object.fromEntries(humans.map((s) => [String(s), r.seats[s].name])),
+  } });
+  const tokens = Object.fromEntries(humans.map((s) => [String(s), data.seat_tokens[String(s)]]));
+  current = {
+    id: data.game_id, token: data.seat_token, tokens: {}, obs: data.observation, seen: maxSeq(data.observation),
+    help: false, discard: new Set(), amount: 2, busy: false, bubbles: {}, gestures: {}, champ: null,
+    room: { code: r.code, host: true, tokens },
+  };
+  store.set("musst.current", { id: current.id, token: current.token, tokens: {}, room: current.room });
+  await publishRoom();
+  await cloud.roomSetStatus(r.code, "jugando");
+  play("deal");
+  go("game");
+  startRoomHost();
+}
+
+// Lo que ve cada persona se publica solo si ha cambiado desde la última vez.
+let publishTimer;
+let publishing = Promise.resolve();
+const published = {};
+function schedulePublish() { clearTimeout(publishTimer); publishTimer = setTimeout(publishRoom, 120); }
+function publishRoom() {
+  const room = current?.room;
+  if (!room?.host) return publishing;
+  const id = current.id;
+  publishing = publishing.then(async () => {
+    for (const [seat, token] of Object.entries(room.tokens)) {
+      const obs = await apiCall(`/api/games/${id}`, { token });
+      const text = JSON.stringify(obs);
+      if (published[`${room.code}/${seat}`] === text) continue;
+      await cloud.roomPublish(room.code, Number(seat), obs);
+      published[`${room.code}/${seat}`] = text;
+      if (obs.finished && !room.finished) {
+        room.finished = true;
+        await cloud.roomSetStatus(room.code, "terminada").catch(() => {});
+      }
+    }
+  }).catch(() => { /* se reintenta en el próximo cambio */ });
+  return publishing;
+}
+
+// Anfitriona: cada segundo recoge lo que han hecho los demás y lo aplica en su asiento.
+let roomHostTimer;
+function startRoomHost() {
+  clearTimeout(roomHostTimer);
+  const code = current?.room?.code;
+  const step = async () => {
+    if (current?.room?.code !== code || !current.room.host || current.room.finished) return;
+    try { await processRoomActions(); } catch { /* sin conexión: se reintenta */ }
+    roomHostTimer = setTimeout(step, 1000);
+  };
+  step();
+}
+async function processRoomActions() {
+  const room = current.room;
+  const pending = await cloud.roomPending(room.code);
+  if (!pending.length) return;
+  for (const a of pending) {
+    const token = room.tokens[String(a.seat)];
+    const path = a.action?.path;
+    let error = null;
+    if (!token || !ROOM_PATHS.has(path)) error = "Acción no válida";
+    else {
+      try { await apiCall(`/api/games/${current.id}/${path}`, { method: "POST", body: a.action.body || {}, token }); } catch (err) { error = err.message; }
+    }
+    await publishRoom();
+    await cloud.roomDone(a.id, error);
+  }
+  try { await animateTo(await apiCall(`/api/games/${current.id}`, { token: current.token })); } catch { /* la vista se actualiza en el próximo sondeo */ }
+}
+
+// Invitado: su mesa es la vista que publica la anfitriona.
+async function enterRoomAsGuest(code) {
+  const view = await cloud.roomView(code);
+  if (!view) throw new Error("La partida aún no ha empezado");
+  current = {
+    id: `sala-${code}`, token: null, tokens: {}, obs: view.obs, seen: maxSeq(view.obs), help: false, discard: new Set(),
+    amount: 2, busy: false, bubbles: {}, gestures: {}, champ: null, room: { code, guest: true },
+  };
+  store.set("musst.current", { id: current.id, room: current.room });
+  play("deal");
+  go("game");
+}
+async function roomGuestApi(sub, { method = "GET", body } = {}) {
+  const { code } = current.room;
+  const latest = async () => {
+    const view = await cloud.roomView(code);
+    if (!view) throw new Error("La sala se ha cerrado");
+    return view.obs;
+  };
+  if (sub === "" || sub === "tick") return latest();
+  if (!ROOM_PATHS.has(sub) || method !== "POST") throw new Error("No disponible en las partidas de sala");
+  const id = await cloud.roomSend(code, { path: sub, body: body || {} });
+  for (let i = 0; i < 40; i += 1) {
+    await new Promise((r) => setTimeout(r, 400));
+    const state = await cloud.roomAction(id);
+    if (state?.done) {
+      if (state.error) throw new Error(state.error);
+      return latest();
+    }
+  }
+  throw new Error("Quien creó la sala no responde: ¿sigue con la partida abierta?");
 }
 
 // ------------------------------------------------------------------ CAMPEONATOS
@@ -1769,11 +2080,22 @@ async function adminExtras(el) {
   document.getElementById("ads-noimg").onclick = () => { form.card_image = null; form.drink_image = null; f.elements.card_image.value = ""; f.elements.drink_image.value = ""; preview(); };
   f.onsubmit = async (e) => {
     e.preventDefault();
+    // El resultado se queda escrito bajo el botón (un aviso que desaparece se pierde fácilmente).
+    const msg = document.getElementById("ads-msg");
+    const button = f.querySelector("button.primary");
+    button.disabled = true;
+    msg.className = "muted";
+    msg.textContent = "Guardando…";
     try {
       ads = cleanAds(cloud.cloudEnabled() ? await cloud.adminSetAds(form) : form);
       store.set("musst.ads", ads);
+      msg.className = "ok-msg";
+      msg.textContent = `✔ Publicidad guardada (${new Date().toLocaleTimeString()}). Se ve en las mesas nuevas.`;
       toast("Publicidad guardada");
-    } catch (err) { toast(err.message); }
+    } catch (err) {
+      msg.className = "error-msg";
+      msg.textContent = `No se ha podido guardar: ${adsErrorHint(err.message)}`;
+    } finally { button.disabled = false; }
   };
   preview();
   if (!cloud.cloudEnabled()) return;
@@ -1923,13 +2245,23 @@ async function boot() {
       return;
     } catch (err) { toast(err.message); }
   }
+  const sala = location.hash.match(/^#sala\/([A-Za-z0-9]{6})$/);
+  if (sala) {
+    history.replaceState(null, "", location.pathname);
+    if (user) { joinRoom(sala[1]); return; }
+    pendingRoom = sala[1];
+  }
   const saved = store.get("musst.current", null);
+  if (saved?.room?.guest) {
+    try { await enterRoomAsGuest(saved.room.code); return; } catch { store.set("musst.current", null); }
+  }
   if (saved && saved.id) {
     try {
       const obs = await api(`/api/games/${saved.id}`, { token: saved.token });
       if (!obs.finished) {
         current = { ...saved, obs, seen: maxSeq(obs), help: false, discard: new Set(), amount: 2, busy: false };
         go("game");
+        if (current.room?.host) startRoomHost();
         return;
       }
     } catch { store.set("musst.current", null); }

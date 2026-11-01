@@ -220,6 +220,13 @@ class MusService:
         if players not in ("bot", "pareja", "cuatro"):
             raise ApiError(422, "Modo de jugadores no válido")
         seats_h = {"bot": (), "pareja": (2,), "cuatro": (1, 2, 3)}[players]
+        # Sala online con huecos libres: solo son personas los asientos que se han ocupado
+        # (los demás los juegan bots).
+        if body.get("human_seats") is not None:
+            chosen = tuple(sorted({int(s) for s in body["human_seats"]}))
+            if not set(chosen) <= set(seats_h):
+                raise ApiError(422, "Asientos de personas no válidos")
+            seats_h = chosen
         local_humans = {s: names.get(str(s)) or f"Jugador {s + 1}" for s in seats_h}
         session, token = self.manager.create(
             mode,
@@ -304,6 +311,19 @@ class MusService:
     def help(self, game_id: str, token: str | None) -> dict[str, Any]:
         session, seat = self.seat_of(game_id, token)
         return coach.explain_legal_actions(build_observation(session.game, seat.index))
+
+    def calculo(self, game_id: str, token: str | None) -> dict[str, Any]:
+        """«Ver el cálculo»: probabilidades y valor esperado para la jugada de esta persona,
+        solo con lo que ella sabe (su observación). Reproducible: la semilla sale de la
+        partida y del momento."""
+        from musst.agents.mathematical import calculation_report
+
+        session, seat = self.seat_of(game_id, token)
+        obs = build_observation(session.game, seat.index)
+        if obs.finished or len(obs.hand) != 4:
+            raise ApiError(409, "Ahora no hay cartas en la mano que calcular")
+        seed = sum(ord(c) for c in game_id) * 1000 + len(obs.history)
+        return calculation_report(obs, seed)
 
     def analysis(self, game_id: str, token: str | None) -> dict[str, Any]:
         session, seat = self.seat_of(game_id, token)

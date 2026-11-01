@@ -159,3 +159,30 @@ export const adminCreateChampionship = ({ name, startsAt, size, target, signals 
 export const adminStartChampionship = (id) => rpc("admin_start_championship", { p_champ: id });
 export const adminDeleteChampionship = (id) => rpc("admin_delete_championship", { p_champ: id });
 export const adminSetMatchWinner = (matchId, winner) => rpc("admin_set_match_winner", { p_match: matchId, p_winner: winner });
+
+// ------------------------------------------------------------------ salas online
+// La partida corre en el navegador de quien crea la sala; los demás reciben solo lo que ve su
+// asiento (room_views) y mandan lo que hacen (room_actions). Ver «salas online» en schema.sql.
+export const roomCreate = (players, settings) => rpc("room_create", { p_players: players, p_settings: settings });
+export const roomJoin = (code) => rpc("room_join", { p_code: code });
+export const roomLeave = (code) => rpc("room_leave", { p_code: code });
+export const roomSetStatus = (code, status) => rpc("room_set_status", { p_code: code, p_status: status });
+export const roomPublish = (code, seat, obs) => rpc("room_publish", { p_code: code, p_seat: seat, p_obs: obs });
+export const roomSend = (code, action) => rpc("room_send", { p_code: code, p_action: action });
+export const roomPending = (code) => rpc("room_pending", { p_code: code });
+export const roomDone = (id, error = null) => rpc("room_done", { p_id: id, p_error: error });
+export async function room(code) {
+  const { data, error } = await client.from("rooms").select("*").eq("code", code).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data;
+}
+export async function roomView(code) {
+  const { data, error } = await client.from("room_views").select("obs,updated_at").eq("code", code).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data;
+}
+export async function roomAction(id) {
+  const { data, error } = await client.from("room_actions").select("done,error").eq("id", id).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data;
+}

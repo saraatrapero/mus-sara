@@ -568,6 +568,200 @@ begin
 end;
 $$;
 
+-- ================================================================ salas online
+-- «Dos personas» o «Cuatro personas» en dispositivos distintos: quien crea la sala recibe un
+-- código de 6 letras y los demás se unen con él. La partida corre en el navegador de quien la
+-- creó (el anfitrión): publica a cada persona solo lo que ve su asiento (room_views, cada fila
+-- la lee solo su dueño) y recoge lo que hacen los demás (room_actions). Así nadie puede ver
+-- las cartas de otro mirando lo que llega de Supabase.
+create table if not exists public.rooms (
+  code text primary key check (code ~ '^[A-HJ-NP-Z2-9]{6}$'),
+  host uuid not null references public.profiles (id) on delete cascade,
+  players text not null check (players in ('pareja', 'cuatro')),
+  seats jsonb not null default '{}'::jsonb,  -- {"0": {"id": uuid, "name": "sara"}, "2": {...}}
+  settings jsonb not null default '{}'::jsonb,
+  status text not null default 'esperando' check (status in ('esperando', 'jugando', 'terminada')),
+  created_at timestamptz not null default now()
+);
+create table if not exists public.room_views (
+  code text not null references public.rooms (code) on delete cascade,
+  seat int not null check (seat between 0 and 3),
+  player uuid not null references public.profiles (id) on delete cascade,
+  obs jsonb not null,
+  updated_at timestamptz not null default now(),
+  primary key (code, seat)
+);
+create table if not exists public.room_actions (
+  id bigint generated always as identity primary key,
+  code text not null references public.rooms (code) on delete cascade,
+  seat int not null check (seat between 0 and 3),
+  player uuid not null references public.profiles (id) on delete cascade,
+  action jsonb not null,
+  done boolean not null default false,
+  error text,
+  created_at timestamptz not null default now()
+);
+create index if not exists room_actions_pending on public.room_actions (code) where not done;
+alter table public.rooms enable row level security;
+alter table public.room_views enable row level security;
+alter table public.room_actions enable row level security;
+
+-- ¿Estoy en la sala? (anfitrión o persona sentada)
+create or replace function public.room_member(p_code text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.rooms r where r.code = p_code and (r.host = auth.uid()
+    or exists (select 1 from jsonb_each(r.seats) s where (s.value ->> 'id')::uuid = auth.uid())));
+$$;
+drop policy if exists rooms_read on public.rooms;
+create policy rooms_read on public.rooms for select to authenticated using (public.room_member(code));
+drop policy if exists room_views_read on public.room_views;
+create policy room_views_read on public.room_views for select to authenticated using (player = auth.uid());
+drop policy if exists room_actions_read on public.room_actions;
+create policy room_actions_read on public.room_actions for select to authenticated
+  using (player = auth.uid() or exists (select 1 from public.rooms r where r.code = room_actions.code and r.host = auth.uid()));
+grant select on public.rooms, public.room_views, public.room_actions to authenticated;
+
+create or replace function public.room_create(p_players text, p_settings jsonb default '{}'::jsonb) returns text
+language plpgsql security definer set search_path = public as $$
+declare
+  alphabet constant text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';  -- sin 0/O ni 1/I
+  new_code text;
+  me public.profiles;
+begin
+  select * into me from public.profiles where id = auth.uid();
+  if not found then raise exception 'Inicia sesión para crear una sala'; end if;
+  if p_players not in ('pareja', 'cuatro') then raise exception 'Una sala es para dos o cuatro personas'; end if;
+  if length(coalesce(p_settings, '{}'::jsonb)::text) > 2000 then raise exception 'Ajustes demasiado largos'; end if;
+  -- Limpieza: salas viejas y las que esta persona dejó sin empezar.
+  delete from public.rooms where created_at < now() - interval '2 days'
+    or (host = me.id and status = 'esperando');
+  loop
+    new_code := (select string_agg(substr(alphabet, 1 + floor(random() * length(alphabet))::int, 1), '')
+                 from generate_series(1, 6));
+    exit when not exists (select 1 from public.rooms where code = new_code);
+  end loop;
+  insert into public.rooms (code, host, players, seats, settings)
+  values (new_code, me.id, p_players, jsonb_build_object('0', jsonb_build_object('id', me.id, 'name', me.username)),
+          coalesce(p_settings, '{}'::jsonb));
+  return new_code;
+end;
+$$;
+
+create or replace function public.room_join(p_code text) returns int
+language plpgsql security definer set search_path = public as $$
+declare
+  r public.rooms;
+  me public.profiles;
+  s text;
+begin
+  select * into me from public.profiles where id = auth.uid();
+  if not found then raise exception 'Inicia sesión para unirte a una sala'; end if;
+  select * into r from public.rooms where code = upper(btrim(p_code)) for update;
+  if not found then raise exception 'No hay ninguna sala con ese código'; end if;
+  for s in select key from jsonb_each(r.seats) loop
+    if (r.seats -> s ->> 'id')::uuid = me.id then return s::int; end if;  -- ya estaba
+  end loop;
+  if r.status <> 'esperando' then raise exception 'Esa partida ya ha empezado'; end if;
+  -- Primero el compañero de quien crea la sala (enfrente), luego los rivales.
+  foreach s in array case when r.players = 'pareja' then array['2'] else array['2', '1', '3'] end loop
+    if not r.seats ? s then
+      update public.rooms set seats = seats || jsonb_build_object(s, jsonb_build_object('id', me.id, 'name', me.username))
+      where code = r.code;
+      return s::int;
+    end if;
+  end loop;
+  raise exception 'La sala está completa';
+end;
+$$;
+
+create or replace function public.room_leave(p_code text) returns void
+language plpgsql security definer set search_path = public as $$
+declare r public.rooms; s text;
+begin
+  select * into r from public.rooms where code = p_code for update;
+  if not found then return; end if;
+  if r.host = auth.uid() then delete from public.rooms where code = p_code; return; end if;
+  if r.status <> 'esperando' then raise exception 'La partida ya ha empezado'; end if;
+  for s in select key from jsonb_each(r.seats) loop
+    if (r.seats -> s ->> 'id')::uuid = auth.uid() then
+      update public.rooms set seats = seats - s where code = p_code;
+    end if;
+  end loop;
+end;
+$$;
+
+-- Solo el anfitrión: empezar, terminar, publicar lo que ve cada asiento y recoger acciones.
+create or replace function public.room_host(p_code text) returns public.rooms
+language plpgsql stable security definer set search_path = public as $$
+declare r public.rooms;
+begin
+  select * into r from public.rooms where code = p_code;
+  if not found or r.host <> auth.uid() then raise exception 'Solo quien ha creado la sala puede hacer esto'; end if;
+  return r;
+end;
+$$;
+
+create or replace function public.room_set_status(p_code text, p_status text) returns void
+language plpgsql security definer set search_path = public as $$
+declare r public.rooms := public.room_host(p_code);
+begin
+  if not (r.status, p_status) in (('esperando', 'jugando'), ('jugando', 'terminada')) then
+    raise exception 'La sala no puede pasar de % a %', r.status, p_status;
+  end if;
+  update public.rooms set status = p_status where code = p_code;
+end;
+$$;
+
+create or replace function public.room_publish(p_code text, p_seat int, p_obs jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+declare r public.rooms := public.room_host(p_code); who uuid;
+begin
+  who := (r.seats -> p_seat::text ->> 'id')::uuid;
+  if who is null then raise exception 'Ese asiento está vacío'; end if;
+  if length(p_obs::text) > 1000000 then raise exception 'Vista demasiado grande'; end if;
+  insert into public.room_views (code, seat, player, obs) values (p_code, p_seat, who, p_obs)
+  on conflict (code, seat) do update set player = excluded.player, obs = excluded.obs, updated_at = now();
+end;
+$$;
+
+create or replace function public.room_send(p_code text, p_action jsonb) returns bigint
+language plpgsql security definer set search_path = public as $$
+declare r public.rooms; s text; new_id bigint;
+begin
+  select * into r from public.rooms where code = p_code;
+  if not found then raise exception 'Esa sala ya no existe'; end if;
+  if r.status <> 'jugando' then raise exception 'La partida no está en juego'; end if;
+  if length(p_action::text) > 2000 then raise exception 'Acción demasiado larga'; end if;
+  for s in select key from jsonb_each(r.seats) loop
+    if (r.seats -> s ->> 'id')::uuid = auth.uid() and s <> '0' then
+      insert into public.room_actions (code, seat, player, action) values (p_code, s::int, auth.uid(), p_action)
+      returning id into new_id;
+      return new_id;
+    end if;
+  end loop;
+  raise exception 'No estás sentado en esta sala';
+end;
+$$;
+
+create or replace function public.room_pending(p_code text) returns setof public.room_actions
+language plpgsql security definer set search_path = public as $$
+begin
+  perform public.room_host(p_code);
+  return query select * from public.room_actions where code = p_code and not done order by id;
+end;
+$$;
+
+create or replace function public.room_done(p_id bigint, p_error text default null) returns void
+language plpgsql security definer set search_path = public as $$
+declare a public.room_actions;
+begin
+  select * into a from public.room_actions where id = p_id;
+  if not found then return; end if;
+  perform public.room_host(a.code);
+  update public.room_actions set done = true, error = left(p_error, 300) where id = p_id;
+end;
+$$;
+
 do $$
 declare f text;
 begin
@@ -575,7 +769,10 @@ begin
     'admin_set_ads(jsonb)', 'champ_players(bigint)', 'admin_create_championship(text, timestamptz, int, int, boolean)',
     'admin_delete_championship(bigint)', 'champ_sign_up(bigint, text, boolean)', 'champ_join_team(bigint)',
     'champ_leave(bigint)', 'admin_start_championship(bigint)', 'champ_start_due()',
-    'champ_report(bigint, bigint, int[])', 'admin_set_match_winner(bigint, bigint)'] loop
+    'champ_report(bigint, bigint, int[])', 'admin_set_match_winner(bigint, bigint)',
+    'room_member(text)', 'room_create(text, jsonb)', 'room_join(text)', 'room_leave(text)', 'room_host(text)',
+    'room_set_status(text, text)', 'room_publish(text, int, jsonb)', 'room_send(text, jsonb)',
+    'room_pending(text)', 'room_done(bigint, text)'] loop
     execute format('revoke all on function public.%s from public, anon', f);
     execute format('grant execute on function public.%s to authenticated', f);
   end loop;

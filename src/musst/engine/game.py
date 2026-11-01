@@ -624,49 +624,12 @@ class MusGame:
     # ------------------------------------------------------------------ resolución
     def lance_winner(self, lance: Phase) -> int | None:
         """Asiento ganador del lance (con las cartas reales). ``None`` si nadie lo lleva."""
-        k8 = self.config.eight_kings
-        order = self.speaking_order
-        keys: dict[int, tuple[int, ...]]
-        if lance is Phase.GRANDE:
-            keys = {s: ev.grande_key(self.hands[s], k8) for s in order}
-        elif lance is Phase.CHICA:
-            keys = {s: ev.chica_key(self.hands[s], k8) for s in order}
-        elif lance is Phase.PARES:
-            keys = {
-                s: ev.pairs(self.hands[s], k8).key for s in order if self.lance_has(s, Phase.PARES)
-            }
-        elif lance is Phase.JUEGO:
-            keys = {s: ev.juego_key(self.hands[s], k8) for s in order if self.lance_has(s, lance)}
-        else:
-            keys = {s: ev.punto_key(self.hands[s], k8) for s in order}
-        if not keys:
-            return None
-        return ev.best_seat(keys, order)
+        hands = {s: self.hands[s] for s in self.speaking_order}
+        return ev.lance_winner(lance.value, hands, self.speaking_order, self.config.eight_kings)
 
     def play_value(self, team: int, lance: Phase) -> int:
         """Valor de las jugadas de una pareja en pares/juego/punto [CONVENCIÓN]."""
-        cfg = self.config
-        k8 = cfg.eight_kings
-        total = 0
-        if lance is Phase.PARES:
-            values = {
-                ev.PairsKind.PAR: cfg.par_points,
-                ev.PairsKind.MEDIAS: cfg.medias_points,
-                ev.PairsKind.DUPLES: cfg.duples_points,
-                ev.PairsKind.NONE: 0,
-            }
-            for seat in (team, team + 2):
-                total += values[ev.pairs(self.hands[seat], k8).kind]
-        elif lance is Phase.JUEGO:
-            for seat in (team, team + 2):
-                points = ev.total_points(self.hands[seat], k8)
-                if points == 31:
-                    total += cfg.juego_31_points
-                elif points > 31:
-                    total += cfg.juego_points
-        elif lance is Phase.PUNTO:
-            total = cfg.punto_points
-        return total
+        return ev.play_points(lance.value, (self.hands[team], self.hands[team + 2]), self.config)
 
     def _reveal_hands(self) -> None:
         if any(

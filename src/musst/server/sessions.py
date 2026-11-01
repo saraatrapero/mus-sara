@@ -24,6 +24,7 @@ from musst.engine.observation import build_observation, build_spectator_view
 from musst.learning.updater import Learner
 from musst.persistence.db import Repository, RepositoryModelStore
 from musst.runtime.runner import FallbackBot, offer_signals
+from musst.server.personajes import PERSONAJES, reparto
 
 log = logging.getLogger("musst.public.server")
 
@@ -150,6 +151,7 @@ class SessionManager:
         ]
         rival_level = rivals if rivals in BOT_LEVELS else "medio"
         invite = None
+        characters = iter(reparto(game.seed, 3))
         for idx in (1, 2, 3):
             if idx in local_humans:
                 seat_token = f"{idx}.{secrets.token_urlsafe(24)}"  # el prefijo indica el asiento
@@ -170,10 +172,15 @@ class SessionManager:
                 )
                 continue
             level = (partner if partner in BOT_LEVELS else "sencillo") if idx == 2 else rival_level
-            default_name = f"Bot {'compañero' if idx == 2 else ('1' if idx == 1 else '2')}"
+            character = next(characters)  # cada bot, un personaje de parodia distinto
             seats.append(
                 Seat(
-                    idx, "bot", names.get(str(idx), default_name), f"bot:{level}:{idx}", level=level
+                    idx,
+                    "bot",
+                    names.get(str(idx)) or PERSONAJES[character],
+                    f"bot:{level}:{idx}",
+                    level=level,
+                    avatar=character,
                 )
             )
         session = GameSession(game_id, mode, game, seats, user_id, invite_token=invite)

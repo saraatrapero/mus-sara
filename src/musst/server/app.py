@@ -69,6 +69,7 @@ class NewGame(BaseModel):
     avatar: str | None = Field(default=None, max_length=64)
     signals: bool = True
     players: Literal["bot", "pareja", "cuatro"] = "bot"
+    human_seats: list[int] | None = Field(default=None, max_length=3)
 
 
 class JoinGame(BaseModel):
@@ -260,6 +261,12 @@ def create_app(repo: Repository | None = None, dev_mode: bool = DEV_MODE) -> Fas
         game_id: str, body: SignalRequest, x_seat_token: Annotated[str | None, Header()] = None
     ) -> dict[str, Any]:
         return service.signal(game_id, x_seat_token, body.signal)
+
+    @app.get("/api/games/{game_id}/calculo")
+    def calculo(
+        game_id: str, x_seat_token: Annotated[str | None, Header()] = None
+    ) -> dict[str, Any]:
+        return service.calculo(game_id, x_seat_token)
 
     @app.get("/api/games/{game_id}/help")
     def help_now(

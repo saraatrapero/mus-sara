@@ -252,6 +252,19 @@ def test_dos_y_cuatro_personas_en_el_mismo_dispositivo(tmp_path):
         assert status == 200 and obs["seat"] == int(seat)
 
 
+def test_sala_con_huecos_que_juegan_bots(tmp_path):
+    """Sala online de cuatro en la que solo se ha unido una persona más: el resto, bots."""
+    b = LocalBackend(tmp_path)
+    body = {"players": "cuatro", "human_seats": [2], "names": {"2": "eva"}, "seed": 8}
+    _, data = b.handle("POST", "/api/games", body, None)
+    assert set(data["seat_tokens"]) == {"0", "2"}
+    seats = data["observation"]["seats"]
+    assert seats[2]["kind"] == "human" and seats[2]["name"] == "eva"
+    assert seats[1]["kind"] == seats[3]["kind"] == "bot"
+    status, err = b.handle("POST", "/api/games", {"players": "pareja", "human_seats": [1]}, None)
+    assert status == 422, err
+
+
 def test_elegir_a_quien_miro(backend):
     _, data = backend.handle("POST", "/api/games", {"seed": 3}, None)
     gid, tok = data["game_id"], data["seat_token"]

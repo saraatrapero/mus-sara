@@ -101,6 +101,27 @@ Límite conocido: como la partida se juega en el navegador (GitHub Pages no tien
 resultado lo envía el navegador de quien juega; una persona con conocimientos técnicos podría
 falsearlo. Para un campeonato con premios de verdad, mejor el servidor (abajo).
 
+### Salas online (dos o cuatro personas)
+
+Con **Dos personas** o **Cuatro personas** en «Jugar», la web abre una **sala con un código de
+6 letras** (sin 0/O ni 1/I para que no se confundan). Los demás entran desde su móvil u ordenador
+escribiendo el código en **Unirme a la sala**, o con el enlace `…/#sala/CÓDIGO`. Hay que tener
+cuenta (Supabase) para crear o unirse.
+
+- Asientos: primero el compañero/a (enfrente) y después los dos rivales. Quien crea la sala puede
+  empezar en cuanto haya alguien más; los asientos vacíos los juegan bots.
+- La partida corre en el navegador de quien crea la sala (GitHub Pages no tiene servidor). Tras
+  cada cambio publica a cada persona **solo lo que ve su asiento** (`room_views`, cada fila la lee
+  solo su dueño) y recoge lo que hacen los demás (`room_actions`). Quien crea la sala tiene que
+  dejar la partida abierta hasta el final.
+- Tablas `rooms`, `room_views` y `room_actions`, y funciones `room_*` en `supabase/schema.sql`:
+  para activarlas, vuelve a pegar el `schema.sql` entero en el SQL Editor de Supabase.
+- Las salas de más de 2 días se borran solas al crear otra.
+
+Límite conocido: el navegador de quien crea la sala tiene la partida entera, así que una persona
+con conocimientos técnicos podría ver las cartas de los demás desde ese navegador. Sin Supabase,
+«Dos personas» y «Cuatro personas» se juegan pasándose el mismo dispositivo, como antes.
+
 ## Alternativa con servidor
 
 El mismo `Dockerfile` y `render.yaml` permiten desplegar el servidor FastAPI en Render o Hugging
