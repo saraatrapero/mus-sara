@@ -34,7 +34,8 @@ musst-play = "musst.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-musst = ["server/static/*", "config/*.toml"]
+musst = ["server/static/*", "config/*.toml", "compat/musarena/ia/modelos/*.npz",
+         "compat/musarena/estrategia/*.npz"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -43,7 +44,8 @@ addopts = "-q"
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-extend-exclude = ["docs", "*.md"]
+# Código copiado de mus-cunef/mus: se deja tal cual (su estilo y sus tests están en su repo).
+extend-exclude = ["docs", "*.md", "src/musst/compat/musarena"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
@@ -59,3 +61,8 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "musst.engine.*"
 strict = true
+
+[[tool.mypy.overrides]]
+# Copia de mus-cunef/mus (sin anotaciones estrictas en origen): no se revisa con mypy.
+module = "musst.compat.musarena.*"
+ignore_errors = true
