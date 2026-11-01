@@ -312,6 +312,19 @@ class MusService:
         session, seat = self.seat_of(game_id, token)
         return coach.explain_legal_actions(build_observation(session.game, seat.index))
 
+    def calculo(self, game_id: str, token: str | None) -> dict[str, Any]:
+        """«Ver el cálculo»: probabilidades y valor esperado para la jugada de esta persona,
+        solo con lo que ella sabe (su observación). Reproducible: la semilla sale de la
+        partida y del momento."""
+        from musst.agents.mathematical import calculation_report
+
+        session, seat = self.seat_of(game_id, token)
+        obs = build_observation(session.game, seat.index)
+        if obs.finished or len(obs.hand) != 4:
+            raise ApiError(409, "Ahora no hay cartas en la mano que calcular")
+        seed = sum(ord(c) for c in game_id) * 1000 + len(obs.history)
+        return calculation_report(obs, seed)
+
     def analysis(self, game_id: str, token: str | None) -> dict[str, Any]:
         session, seat = self.seat_of(game_id, token)
         try:
