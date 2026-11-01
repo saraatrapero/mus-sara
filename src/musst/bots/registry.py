@@ -28,6 +28,7 @@ def builtin_entries() -> list[BotEntry]:
     from musst.bots.builtin.medium import MediumBot
     from musst.bots.builtin.pro import ProBot
     from musst.bots.builtin.simple import RandomBot, SimpleBot
+    from musst.bots.cunef import disponibles
 
     return [
         BotEntry(
@@ -52,6 +53,12 @@ def builtin_entries() -> list[BotEntry]:
             "matematico",
             MathBot,
             description="Bayes + Monte Carlo exacto + valor esperado de P(ganar la partida)",
+        ),
+        # Bots traídos de mus-cunef/mus (ver musst.bots.cunef); los que usan numpy solo
+        # aparecen si está instalado.
+        *(
+            BotEntry(name, "mus-cunef", "1.0", name, factory, description=desc)
+            for name, (factory, desc) in disponibles().items()
         ),
     ]
 
