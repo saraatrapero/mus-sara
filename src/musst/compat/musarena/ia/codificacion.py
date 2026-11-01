@@ -214,11 +214,16 @@ def codificar(obs: Observation, creencias: Creencias | None = None) -> np.ndarra
 
 
 def _nombres() -> tuple[str, ...]:
-    from musst.compat.musarena.engine import nueva_partida
-    from musst.compat.musarena.observation import observe
+    # ADAPTADO para MUS.ST: el original sacaba la observación de ejemplo del motor de musarena,
+    # que no se ha copiado. Aquí sale del motor FEM traducida por el adaptador; solo se usa para
+    # saber el nombre (y el número) de las posiciones del vector, que no cambian.
+    from musst.bots.adaptador import traducir_observacion
+    from musst.engine.game import MusGame
+    from musst.engine.observation import build_observation
 
+    game = MusGame(seed=0)
     v = _Vector(con_nombres=True)
-    _codificar(observe(nueva_partida(seed=0), 0), v, None)
+    _codificar(traducir_observacion(build_observation(game, game.turn)), v, None)
     return tuple(v.nombres)
 
 
