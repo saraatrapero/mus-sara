@@ -161,6 +161,22 @@ Los tests de conformidad comprueban que el bot:
 4. Tras la revisión y el merge, tu bot entra en el torneo automático y en el
    [scoreboard](https://saraatrapero.github.io/mus-sara/scoreboard/).
 
+### ¿Tu bot usa la API de mus-cunef?
+
+Si lo escribiste para [mus-cunef/mus](https://github.com/mus-cunef/mus) (`Player.choose_action`),
+no hace falta reescribirlo: envuélvelo con el adaptador y juega aquí igual.
+
+```python
+from musst.bots.adaptador import PlayerComoBot
+from mi_bot_musarena import MiPlayer
+
+bot = PlayerComoBot(MiPlayer(), name="mi_bot")
+```
+
+Así entran ya `basico`, `reglas` e `inteligente`. Detalles y diferencias de reglas:
+[Bots de mus-cunef](bots-cunef.md). La clasificación del torneo está en
+[Clasificación de bots](clasificacion.md).
+
 ## 7. Sandbox: cómo se ejecuta tu bot
 
 En el torneo, tu bot se ejecuta en **otro proceso** (`musst.bots.sandbox`): recibe la

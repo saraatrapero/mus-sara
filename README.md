@@ -21,11 +21,11 @@ Práctica de **Inteligencia Artificial — 3º MAT-A, CUNEF Universidad, 2026/20
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev]"                  # incluye numpy, para los bots de mus-cunef
 
-pytest                                   # 180 tests
+pytest                                   # 296 tests
 musst-play --bots sencillo profesional   # una partida sin interfaz
-musst-arena --games 5                    # torneo entre todos los bots
+mus-torneo -n 5                          # torneo entre todos los bots (Elo de Bradley-Terry)
 MUSST_SECURE_COOKIES=0 uvicorn musst.server.app:app --reload   # web con servidor: http://localhost:8000
 python scripts/build_web.py --out site && python -m http.server -d site 8001   # web sin servidor (Pyodide)
 ```
@@ -53,6 +53,18 @@ class MiBot(Bot):
 
 Tutorial completo, sandbox y cómo entrar en el torneo: **[docs/bot-api.md](docs/bot-api.md)**.
 
+## Bots y torneo
+
+| Bots | Origen |
+|---|---|
+| `random`, `sencillo`, `medio`, `profesional`, `matematico` | MUS.ST (multiagente, Monte Carlo, modelo de jugador) |
+| `basico`, `reglas` (+ `reglas_agresivo`, `reglas_conservador`), `inteligente` (red neuronal, imitación + PPO) | [mus-cunef/mus](https://github.com/mus-cunef/mus), a través de un adaptador entre APIs: **[docs/bots-cunef.md](docs/bots-cunef.md)** |
+| Los de `bots/` | Externos, vía Pull Request |
+
+La GitHub Action del torneo los enfrenta a todos al fusionar en `main`, cada lunes o a mano, y
+publica la clasificación (Elo de Bradley-Terry y % de victorias ± 95 %) en la web
+(**Campeonatos**) y en la documentación ([Clasificación de bots](docs/clasificacion.md)).
+
 ## Estructura
 
 ```
@@ -62,7 +74,8 @@ src/musst/
   agents/       IA multiagente: orquestador, especialistas, estrategia, juez
   learning/     PlayerModel contextual, memoria, detección de cambios, jugadores sintéticos
   analytics/    estadísticas, momentos clave, contrafactuales post-partida
-  arena/        torneo (mus duplicado) y scoreboard
+  arena/        torneo (mus duplicado, Elo de Bradley-Terry) y scoreboard
+  compat/       código de mus-cunef/mus (bots basico, reglas, inteligente) que usa el adaptador
   persistence/  SQLite detrás de un repositorio; contraseñas con scrypt
   server/       casos de uso (service.py) + API FastAPI + frontend estático (HTML/CSS/JS)
   web/          backend que corre en el navegador (Pyodide) para GitHub Pages
