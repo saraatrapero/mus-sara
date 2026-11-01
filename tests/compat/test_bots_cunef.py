@@ -48,3 +48,22 @@ def test_registro_incluye_los_bots_de_mus_cunef():
     assert get_entry("basico").author == "mus-cunef"
     if hay_numpy():
         assert {"reglas", "reglas_agresivo", "reglas_conservador"} <= nombres
+
+
+@necesita_numpy
+def test_inteligente_carga_el_modelo_y_juega_sin_faltas():
+    from musst.bots.cunef import inteligente
+
+    bot = inteligente(seed=1)
+    assert bot.player.red.n_entradas > 100  # el modelo entrenado, no una red vacía
+    _, resultados = _partidas(inteligente, 4, seed0=80)
+    tiempos = [t for r in resultados for s in (0, 2) for t in r.decision_times.get(s, [])]
+    assert max(tiempos) < 1.0
+
+
+@necesita_numpy
+def test_inteligente_es_mas_fuerte_que_sencillo():
+    from musst.bots.cunef import inteligente
+
+    victorias, _ = _partidas(inteligente, 12, seed0=200)
+    assert victorias >= 7  # medido: ~80 % en 40 partidas duplicadas

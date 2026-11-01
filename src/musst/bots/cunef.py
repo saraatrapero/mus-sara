@@ -14,7 +14,6 @@ devuelve ``basico``.
 
 from __future__ import annotations
 
-import importlib.util
 import itertools
 from collections.abc import Callable
 
@@ -25,7 +24,12 @@ _semillas = itertools.count(1)
 
 
 def hay_numpy() -> bool:
-    return importlib.util.find_spec("numpy") is not None
+    """Si numpy se puede importar (en la web con Pyodide no se carga: allí solo hay basico)."""
+    try:
+        import numpy  # noqa: F401
+    except ImportError:
+        return False
+    return True
 
 
 def basico(seed: int | None = None) -> Bot:
@@ -41,6 +45,17 @@ def reglas(estilo: str = "equilibrado", seed: int | None = None) -> Bot:
     return PlayerComoBot(HeuristicBot(seed=_semilla(seed), estilo=estilo), name=nombre)
 
 
+def inteligente(seed: int | None = None) -> Bot:
+    """Red neuronal entrenada en mus-cunef (imitación + PPO). Pesos en ``ia/modelos/*.npz``.
+
+    Para jugar solo hace falta numpy: la red es un perceptrón que se evalúa con multiplicaciones
+    de matrices (PyTorch solo se usó para entrenarla, en el repo de origen).
+    """
+    from musst.compat.musarena.players.smart_bot import SmartBot
+
+    return PlayerComoBot(SmartBot(seed=_semilla(seed)), name="inteligente")
+
+
 def _semilla(seed: int | None) -> int:
     """Cada bot con su propia semilla (reproducible dentro de un mismo proceso)."""
     return seed if seed is not None else next(_semillas)
@@ -52,6 +67,7 @@ def disponibles() -> dict[str, tuple[Callable[[], Bot], str]]:
         "basico": (basico, "mus-cunef: reglas sencillas sobre la fuerza de la mano"),
     }
     if hay_numpy():
+        bots["inteligente"] = (inteligente, "mus-cunef: red neuronal (imitación + PPO)")
         bots["reglas"] = (reglas, "mus-cunef: lee la mesa y decide pensando en la vaca")
         bots["reglas_agresivo"] = (
             lambda: reglas("agresivo"),
