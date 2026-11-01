@@ -74,3 +74,4 @@ def test_clasificacion_por_bradley_terry_con_cruces_y_markdown(tmp_path):
     data = json.loads((tmp_path / "c.json").read_text())
     assert {r["name"] for r in data["ranking"]} == {"sencillo", "random"}
     assert data["head_to_head"][0]["games"] == 2
+    assert (tmp_path / "c.md").read_text().startswith("# Clasificación de bots")

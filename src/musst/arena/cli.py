@@ -53,7 +53,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     out = write_scoreboard(result, args.out)
     if args.markdown:
-        Path(args.markdown).write_text(to_markdown(result))
+        data = result.to_dict()
+        cabecera = (
+            "# Clasificación de bots\n\n"
+            f"{data['generated_at']} · {result.games_per_pair} repartos por cruce, cada uno jugado "
+            f"en los dos sentidos (mus duplicado) · semilla {result.seed}. Elo de Bradley-Terry: "
+            "media 1500; 200 puntos de diferencia ≈ 76 % de victorias.\n\n"
+        )
+        Path(args.markdown).write_text(cabecera + to_markdown(result))
     if args.json:
         Path(args.json).write_text(json.dumps(result.to_dict(), indent=2, ensure_ascii=False))
     print(to_markdown(result))
