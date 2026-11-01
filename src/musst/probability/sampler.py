@@ -98,6 +98,17 @@ def _valid_types(
     )
 
 
+@lru_cache(maxsize=8192)
+def _type_weights(
+    constraint: SeatConstraint, counts: tuple[int, ...], eight_kings: bool
+) -> tuple[tuple[tuple[tuple[int, int], ...], ...], tuple[int, ...], int]:
+    """Tipos compatibles, Π_r C(n_r, m_r) de cada uno y su suma, para las cartas que quedan.
+    En caché: los mismos recuentos se repiten muchas veces entre repartos."""
+    types = _valid_types(constraint, eight_kings)
+    weights = tuple(type_weight(counts, ht) for ht in types)
+    return types, weights, sum(weights)
+
+
 @dataclass
 class WorldSample:
     world: World
@@ -144,9 +155,7 @@ class WorldSampler:
                 flat = [c for cards in by_class for c in cards]
                 hand = tuple(rng.sample(flat, HAND_SIZE))
             else:
-                types = _valid_types(constraint, self.eight_kings)
-                weights = [type_weight(counts, ht) for ht in types]
-                z = sum(weights)
+                types, weights, z = _type_weights(constraint, counts, self.eight_kings)
                 if z == 0:
                     # Reparto imposible con lo ya repartido: se completa con las cartas que
                     # quedan (todo reparto tiene las cuatro manos) y su peso es 0.

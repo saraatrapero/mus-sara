@@ -26,6 +26,7 @@ from __future__ import annotations
 import math
 from collections.abc import Callable, Hashable, Mapping, Sequence
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import TypeVar
 
 from musst.agents.specialists import discard_weight
@@ -40,6 +41,12 @@ K = TypeVar("K", bound=Hashable)
 LIKELIHOOD_FLOOR = 0.02
 """Ninguna acción tiene probabilidad 0 con ninguna mano (faroles, tapados, errores)."""
 CUT_SHARPNESS = 0.06
+
+
+@lru_cache(maxsize=1 << 16)
+def strength(hand: tuple[Card, ...], lance: str) -> float:
+    """``toolkit.hand_strength`` en caché (se pide miles de veces por decisión)."""
+    return hand_strength(hand, lance)
 
 
 def logit(p: float) -> float:
@@ -182,7 +189,7 @@ class BehaviourModel:
         """P(el asiento toma la decisión | su mano), sin suelo."""
         p = self.params(seat)
         shift = {"envida": p.envida_shift, "quiere": p.quiere_shift}.get(decision, 0.0)
-        return fitted_probability(lance, decision, hand_strength(hand, lance), shift)
+        return fitted_probability(lance, decision, strength(tuple(hand), lance), shift)
 
     def likelihood(self, e: Evidence, hand: Sequence[Card]) -> float:
         if e.kind in ("cut", "mus"):
