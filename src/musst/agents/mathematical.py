@@ -14,6 +14,7 @@ Ninguno ve más que la :class:`~musst.engine.observation.Observation` del bot.
 from __future__ import annotations
 
 import math
+import random
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -22,6 +23,7 @@ from musst.agents.base import Agent, AgentContext, AgentReport, Decision, Estima
 from musst.engine.actions import PassAction, RejectAction
 from musst.engine.cards import Card
 from musst.engine.evaluation import LANCES
+from musst.engine.observation import Observation
 from musst.learning.player_model import PRIORS
 from musst.probability.bayes import (
     BehaviourModel,
@@ -342,7 +344,7 @@ class MathJudge:
         self,
         ctx: AgentContext,
         values: list[ActionValue],
-        chosen: ActionValue,
+        chosen: ActionValue | None,
         second: ActionValue | None,
         confidence: float,
     ) -> dict[str, Any]:
@@ -390,8 +392,9 @@ class MathJudge:
                 "utilidad": "P(ganar la partida) tras el lance (cadena de Markov sobre el marcador)",
             },
             "acciones": [v.to_dict() for v in sorted(values, key=lambda v: v.ev, reverse=True)],
-            "accion_elegida": label(chosen.action),
         }
+        if chosen is not None:
+            out["accion_elegida"] = label(chosen.action)
         if analysis is not None:
             out["probabilidades"] = {
                 lance: {
@@ -403,7 +406,11 @@ class MathJudge:
                 for lance, lp in analysis.lances.items()
             }
             out["tantos_de_la_jugada_en_paso"] = analysis.points.to_dict()
-        if second is not None:
+        if chosen is None:
+            out["justificacion"] = (
+                "Ahora no hay que decidir en un lance: solo se calculan las probabilidades."
+            )
+        elif second is not None:
             out["justificacion"] = (
                 f"{label(chosen.action)} maximiza la probabilidad esperada de ganar la partida: "
                 f"{chosen.ev:.4f} frente a {second.ev:.4f} de {label(second.action)} "
@@ -412,3 +419,25 @@ class MathJudge:
         else:
             out["justificacion"] = f"{label(chosen.action)} es la única acción evaluada."
         return out
+
+
+def calculation_report(obs: Observation, seed: int = 0) -> dict[str, Any]:
+    """«Ver el cálculo»: la misma cadena del bot matemático (bayesiano → analista →
+    evaluador → juez) aplicada a la observación de una persona, **sin jugar por ella**.
+
+    Solo usa lo que esa persona sabe (su observación). Si le toca decidir en un lance, además
+    de las probabilidades da el valor esperado de cada acción legal y la recomendada."""
+    # Se pide de vez en cuando (no en cada jugada): más repartos que el bot, para que las
+    # cifras que se enseñan tengan menos ruido de Monte Carlo.
+    ctx = AgentContext(obs, random.Random(seed), {"samples": 800, "samples_deep": 2000})
+    ctx.reports["bayesiano"] = BayesianAgent(use_evidence=True).analyze(ctx)
+    ctx.reports["analista"] = MathAnalystAgent().analyze(ctx)
+    judge = MathJudge()
+    lance_actions = {"pass", "bet", "accept", "accept_no_lose", "reject", "raise", "ordago"}
+    if obs.phase in LANCES and obs.is_my_turn and obs.legal_types() & lance_actions:
+        ctx.reports["evaluador"] = DecisionEvaluatorAgent().analyze(ctx)
+        decision = judge.decide(ctx, ctx.shared.get("values", []))
+        if decision.math is not None:
+            return {**decision.math, "confianza": round(decision.confidence, 3)}
+        return {"error": decision.narrative}
+    return judge.explanation(ctx, [], None, None, 0.0)

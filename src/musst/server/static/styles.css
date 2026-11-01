@@ -638,3 +638,9 @@ body.playing .center { position: relative; z-index: 4; }
 .quote { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
 .quote-face { width: 44px; height: 44px; border-radius: 50%; overflow: hidden; flex: none; border: 2px solid var(--gold); background: #f3ead7; }
 .quote-face .face { width: 100%; height: 100%; display: block; }
+
+/* ------------------------------------------------------------------ ver el cálculo */
+.data.calc td { white-space: nowrap; }
+.data.calc th { white-space: normal; vertical-align: bottom; }
+.data.calc tr.hl td { background: color-mix(in srgb, var(--gold) 18%, transparent); }
+.calc-why { padding: 10px 12px; border-left: 4px solid var(--gold); background: color-mix(in srgb, var(--gold) 8%, transparent); border-radius: 6px; }
