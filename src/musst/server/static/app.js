@@ -105,9 +105,28 @@ async function localApi(path, method, body, token) {
 async function api(path, opts = {}) {
   const room = current?.room;
   const game = current && path.startsWith(`/api/games/${current.id}`);
-  if (room?.guest && game) return roomGuestApi(path.slice(`/api/games/${current.id}`.length).replace(/^\//, ""), opts);
+  if (room?.guest && game) return roomGuestApi(path.slice(`/api/games/${current.id}`.length).replace(/^\//, ""), opts).then(withCharacters);
   const data = await apiCall(path, opts);
   if (room?.host && game) schedulePublish();
+  return withCharacters(data);
+}
+// Partidas creadas antes de los personajes (o guardadas en el navegador): sus bots no traen
+// personaje. Se les asigna uno estable para esa partida (sin repetir) y, si se llamaban
+// «Bot …», su apodo.
+function withCharacters(data) {
+  const obs = data?.observation || data;
+  if (!obs || !Array.isArray(obs.seats)) return data;
+  const taken = new Set(obs.seats.map((x) => x.avatar).filter((a) => PERSONAJES[a]));
+  const ids = Object.keys(PERSONAJES);
+  const seed = [...String(obs.game_id || "")].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+  for (const seat of obs.seats) {
+    if (seat.kind !== "bot" || PERSONAJES[seat.avatar]) continue;
+    let k = (seed + seat.seat * 3) % ids.length;
+    while (taken.has(ids[k])) k = (k + 1) % ids.length;
+    seat.avatar = ids[k];
+    taken.add(ids[k]);
+    if (/^Bot( |$)/.test(seat.name || "")) seat.name = PERSONAJES[ids[k]].apodo;
+  }
   return data;
 }
 async function apiCall(path, { method = "GET", body, token } = {}) {
