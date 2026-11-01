@@ -262,6 +262,12 @@ def create_app(repo: Repository | None = None, dev_mode: bool = DEV_MODE) -> Fas
     ) -> dict[str, Any]:
         return service.signal(game_id, x_seat_token, body.signal)
 
+    @app.get("/api/games/{game_id}/calculo")
+    def calculo(
+        game_id: str, x_seat_token: Annotated[str | None, Header()] = None
+    ) -> dict[str, Any]:
+        return service.calculo(game_id, x_seat_token)
+
     @app.get("/api/games/{game_id}/help")
     def help_now(
         game_id: str, x_seat_token: Annotated[str | None, Header()] = None

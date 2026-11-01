@@ -867,6 +867,7 @@ function renderGame(bubbles = current?.bubbles || {}) {
     </div>
     <div class="row game-tools">
       <button class="btn ghost" id="help-btn" aria-expanded="${current.help}">? ¿Qué puedo hacer?</button>
+      <button class="btn ghost" id="calc-btn">🧮 Ver el cálculo</button>
       ${finished ? '<button class="btn primary" id="summary-btn">Ver resumen</button>' : ""}
       <button class="btn ghost" id="log-btn">Historial de la jugada</button>
       ${finished ? "" : '<button class="btn ghost" id="mic-btn" title="Di tu jugada en voz alta">🎤 Jugar hablando</button>'}
@@ -885,6 +886,7 @@ function renderGame(bubbles = current?.bubbles || {}) {
   document.querySelectorAll("[data-signal]").forEach((b) => (b.onclick = () => makeSignal(b.dataset.signal)));
   scheduleTick();
   document.getElementById("help-btn").onclick = () => { current.help = !current.help; renderGame(); };
+  document.getElementById("calc-btn").onclick = showCalculo;
   document.getElementById("log-btn").onclick = () => showLog();
   if (finished) document.getElementById("summary-btn").onclick = () => showSummary();
   if (current.help) loadHelp();
@@ -1159,6 +1161,57 @@ function schedulePoll() {
     if (!current || current.obs.finished || current.obs.turn === current.obs.seat || !document.querySelector(".game")) return;
     try { await animateTo(await api(`/api/games/${current.id}`, { token: current.token })); } catch { schedulePoll(); }
   }, 1500);
+}
+
+// ------------------------------------------------------------------ ver el cálculo
+// Probabilidades y valor esperado para MI jugada, con solo lo que yo sé (mi observación):
+// la misma cadena del bot matemático (docs/probabilidad.md), sin jugar por mí.
+const ACTION_ES = { PASS: "Paso", BET: "Envido", RAISE: "Subo", ORDAGO: "Órdago", ACCEPT: "Quiero", ACCEPT_NO_LOSE: "Quiero y no pierdo", REJECT: "No quiero" };
+const actionEs = (code) => { const m = String(code).match(/^([A-Z_]+?)(?:_(\d+))?$/); return m ? `${ACTION_ES[m[1]] || m[1]}${m[2] ? " " + m[2] : ""}` : code; };
+const pctEs = (p) => (p == null ? "—" : `${(100 * p).toFixed(1).replace(".", ",")} %`);
+const ic = (e) => (e && e.ic95 ? ` <small class="muted">[${pctEs(e.ic95[0])} – ${pctEs(e.ic95[1])}]</small>` : e && e.exacta ? ' <small class="muted">(exacta)</small>' : "");
+async function showCalculo() {
+  openModal('<h2 id="modal-title">🧮 Calculando…</h2><p class="muted">Repartos posibles de las cartas que no ves + Bayes con lo que han hecho los demás.</p>');
+  try {
+    const r = await api(`/api/games/${current.id}/calculo`, { token: current.token });
+    if (r.error) throw new Error(r.error);
+    openModal(calculoHTML(r));
+  } catch (err) {
+    openModal(`<h2 id="modal-title">🧮 Ver el cálculo</h2><p>${esc(err.message)}</p><div class="row"><button class="btn ghost" data-close>Cerrar</button></div>`);
+  }
+}
+function calculoHTML(r) {
+  const st = r.estado, info = r.informacion_conocida, m = r.metodo;
+  const lanceName = (l) => LANCE[l] || { discard: "Descarte" }[l] || l;
+  const probs = Object.entries(r.probabilidades || {}).map(([l, p]) => `<tr${l === st.lance ? ' class="hl"' : ""}>
+      <td class="l">${lanceName(l)}</td><td>${pctEs(p.a_priori?.p)}</td><td><strong>${pctEs(p.a_posteriori.gana.p)}</strong>${ic(p.a_posteriori.gana)}</td>
+      <td>${pctEs(p.a_posteriori.pierde.p)}</td><td>${pctEs(p.a_posteriori.nadie.p)}</td></tr>`).join("");
+  const acciones = (r.acciones || []).map((a) => `<tr${a.accion === r.accion_elegida ? ' class="hl"' : ""}>
+      <td class="l">${a.accion === r.accion_elegida ? "⭐ " : ""}${esc(actionEs(a.accion))}</td><td><strong>${pctEs(a.ev_partida)}</strong></td>
+      <td>${a.ev_tantos == null ? "se juega la partida" : (a.ev_tantos > 0 ? "+" : "") + a.ev_tantos.toFixed(2).replace(".", ",")}</td>
+      <td>${a.p_quieren == null ? "—" : pctEs(a.p_quieren)}</td><td>${a.p_gano_si_quieren == null ? (a.p_gano == null ? "—" : pctEs(a.p_gano)) : pctEs(a.p_gano_si_quieren)}</td></tr>`).join("");
+  const ranked = r.acciones || [];
+  const best = ranked.find((a) => a.accion === r.accion_elegida), second = ranked.find((a) => a.accion !== r.accion_elegida);
+  const why = best ? `<p class="calc-why">Recomendada: <strong>${esc(actionEs(best.accion))}</strong>. Es la que más probabilidad esperada de ganar la partida te da:
+      ${pctEs(best.ev_partida)}${second ? ` frente a ${pctEs(second.ev_partida)} de ${esc(actionEs(second.accion))}` : ""}.
+      ${r.confianza != null ? `Probabilidad de que de verdad sea la mejor ≈ ${pctEs(r.confianza)}.` : ""}</p>` : `<p class="muted">${esc(r.justificacion || "")}</p>`;
+  return `<h2 id="modal-title">🧮 El cálculo de tu jugada · ${esc(lanceName(st.lance))}</h2>
+    <p>Marcador ${st.marcador.mi_pareja} – ${st.marcador.rivales} (a ${st.marcador.objetivo}).
+      Probabilidad de ganar la partida ahora: <strong>${pctEs(st.p_ganar_partida_ahora)}</strong>.</p>
+    <h3>Lo que sabes y lo que no</h3>
+    <ul><li>Tus cartas: ${info.mis_cartas.map(esc).join(" · ")}. Cartas que no ves: <strong>${r.informacion_desconocida.cartas_desconocidas}</strong>, repartidas entre los otros tres.</li>
+      <li>Lo que han hecho los demás (evidencia para Bayes): ${info.acciones_observadas.length ? info.acciones_observadas.map(esc).join("; ") : "nada todavía"}.</li></ul>
+    <h3>Probabilidad de que tu pareja gane cada lance</h3>
+    <div class="table-wrap"><table class="data calc"><thead><tr><th class="l">Lance</th><th>A priori</th><th>Con lo que has visto [IC 95 %]</th><th>Pierde</th><th>Nadie lo juega</th></tr></thead><tbody>${probs}</tbody></table></div>
+    ${acciones ? `<h3>Valor esperado de cada acción</h3>
+      <div class="table-wrap"><table class="data calc"><thead><tr><th class="l">Acción</th><th>P(ganar la partida)</th><th>Tantos esperados</th><th>P(lo quieren)</th><th>P(gano si lo quieren)</th></tr></thead><tbody>${acciones}</tbody></table></div>${why}` : `<p class="muted">${esc(r.justificacion)}</p>`}
+    <details class="more"><summary>Cómo se ha calculado</summary>
+      <ul><li><strong>Cartas</strong>: ${m.repartos} repartos de las cartas que no ves, compatibles con lo que se ha declarado (hipergeométrica multivariante, sin reemplazo).</li>
+        <li><strong>Bayes</strong>: P(H | E) ∝ P(E | H) · P(H). Cada acción de los demás cambia el peso de cada reparto, sin descartar ninguno (un envite puede ser un farol). Tamaño efectivo de muestra: ${m.ess_a_posteriori} de ${m.repartos}${m.converge ? "" : " (no ha llegado a converger)"}.</li>
+        <li><strong>Decisión</strong>: EV(a) = Σ P(s | E) · U(a, s), donde U es la probabilidad de ganar la partida tras el lance.</li>
+        <li>Monte Carlo: cada probabilidad lleva su intervalo de confianza; en otra jugada parecida los números varían un poco.</li></ul>
+      <p><a href="docs/probabilidad/" target="_blank" rel="noopener">Fórmulas, pruebas y experimentos completos</a></p></details>
+    <div class="row"><button class="btn ghost" data-close>Cerrar</button></div>`;
 }
 
 async function loadHelp() {

@@ -239,6 +239,8 @@ class LocalBackend:
                     return 200, svc.action(game_id, token, body.get("action") or {})
                 if sub == "help":
                     return 200, svc.help(game_id, token)
+                if sub == "calculo":
+                    return 200, svc.calculo(game_id, token)
                 if sub == "analysis":
                     return 200, svc.analysis(game_id, token)
             if path == "/api/cloud/import" and method == "POST":
