@@ -1,5 +1,5 @@
 name = "car_lu"
 author = "Carmen Cuerva y Lucía Argüello"
-version = "1.0"
+version = "2.0"
 entrypoint = "bot:CarLuBot"
-description = "Monte Carlo: descarte por mano esperada y envites por probabilidad de ganar cada lance."
+description = "Monte Carlo con lectura calibrada de envites: decide querer o no pensando en ganar la partida."
