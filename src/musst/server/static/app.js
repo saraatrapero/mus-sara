@@ -604,7 +604,8 @@ function voiceFor(seat) {
   const order = [me, (me + 1) % 4, (me + 2) % 4, (me + 3) % 4];
   return es[order.indexOf(seat) % es.length];
 }
-function voiceOn() { return settings.voice && settings.sound && typeof speechSynthesis !== "undefined"; }
+// La partida rápida va sin voz: solo bocadillos (petición de la usuaria).
+function voiceOn() { return !(current?.quick || current?.obs?.mode === "rapida") && settings.voice && settings.sound && typeof speechSynthesis !== "undefined"; }
 // Habla y bocadillo van juntos: el bocadillo aparece cuando empieza la voz y se espera a que acabe.
 function speakWithBubble(text, seat, minMs = 900) {
   const show = () => { current.bubbles = { ...(current.bubbles || {}), [seat]: text }; renderGame(); };
