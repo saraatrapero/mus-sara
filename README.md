@@ -76,7 +76,6 @@ Tutorial completo, sandbox y cómo entrar en el torneo: **[docs/bot-api.md](docs
 | Bots | Origen |
 |---|---|
 | `random`, `sencillo`, `medio`, `experto`, `matematico` | MUS.ST (multiagente, Monte Carlo, modelo de jugador) |
-| `greedy`, `dijkstra`, `a_star` | MUS.ST. **Variantes heurísticas con nombres de algoritmos**: no implementan Dijkstra ni A*. Puntúan cada acción con la misma función de valor inmediato (fuerza de la mano y marcador) y eligen la mejor; `dijkstra` y `a_star` solo suman términos que son iguales para todas las acciones, así que deciden exactamente lo mismo que `greedy` (y echan órdago casi siempre que es legal) |
 | `basico`, `reglas` (+ `reglas_agresivo`, `reglas_conservador`), `inteligente` (red neuronal, imitación + PPO) | [mus-cunef/mus](https://github.com/mus-cunef/mus), a través de un adaptador entre APIs: **[docs/bots-cunef.md](docs/bots-cunef.md)** |
 | Los de `bots/` | Externos, vía Pull Request |
 

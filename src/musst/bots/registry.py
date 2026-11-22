@@ -35,8 +35,30 @@ class BotEntry:
     """Otro nombre de un bot que ya está en la lista (no se repite en el ranking ni al elegir)."""
 
 
+ORDEN_POR_FUERZA = (
+    "random",
+    "matematico",
+    "basico",
+    "sencillo",
+    "medio",
+    "reglas_agresivo",
+    "reglas",
+    "reglas_conservador",
+    "experto",
+    "inteligente",
+)
+"""Bots del equipo de menos a más fuerte, según el Elo medido en el torneo automático
+(clasificación publicada). La web los enseña en este orden."""
+
+
 def builtin_entries() -> list[BotEntry]:
-    from musst.bots.builtin.algorithms import AStarBot, DijkstraBot, GreedyBot
+    """Bots del equipo, ordenados de menos a más fuerte (:data:`ORDEN_POR_FUERZA`)."""
+    entries = _builtin_entries()
+    orden = {name: i for i, name in enumerate(ORDEN_POR_FUERZA)}
+    return sorted(entries, key=lambda e: orden.get(e.name, len(orden)))
+
+
+def _builtin_entries() -> list[BotEntry]:
     from musst.bots.builtin.math import MathBot
     from musst.bots.builtin.medium import MediumBot
     from musst.bots.builtin.pro import ProBot
@@ -67,30 +89,6 @@ def builtin_entries() -> list[BotEntry]:
             ProBot,
             description="Alias compatible del bot experto",
             alias=True,
-        ),
-        BotEntry(
-            "dijkstra",
-            "MUS.ST",
-            "1.0",
-            "dijkstra",
-            DijkstraBot,
-            description="Búsqueda Dijkstra sobre acciones legales",
-        ),
-        BotEntry(
-            "greedy",
-            "MUS.ST",
-            "1.0",
-            "greedy",
-            GreedyBot,
-            description="Decisión voraz por valor inmediato",
-        ),
-        BotEntry(
-            "a_star",
-            "MUS.ST",
-            "1.0",
-            "a_star",
-            AStarBot,
-            description="Búsqueda A* con heurística de mano",
         ),
         BotEntry(
             "matematico",
