@@ -2008,9 +2008,16 @@ async function botRanking() {
     return;
   }
   const pctTxt = (r) => `${(r.win_rate * 100).toFixed(1)} % ± ${((r.margin_95 ?? 0) * 100).toFixed(1)}`;
+  const top = data.ranking.slice(0, 3);
+  const podiumOrder = top.length >= 3 ? [top[1], top[0], top[2]] : top;
+  const podium = podiumOrder.map((r) => {
+    const place = data.ranking.indexOf(r) + 1;
+    const medal = place === 1 ? "🥇" : place === 2 ? "🥈" : "🥉";
+    return `<article class="podium-place podium-${place}"><span class="podium-medal" aria-label="${place}º puesto">${medal}</span><strong>${esc(r.name)}</strong><span>${Math.round(r.elo)} Elo</span><span>${pctTxt(r)} victorias</span></article>`;
+  }).join("");
   el.innerHTML = `<h2 class="card-title">🏆 Clasificación pública de bots</h2>
-    <p class="muted">Todos los bots del repositorio participan en una liga todos contra todos, sin iniciar sesión. Se juegan ${data.games_per_pair} repartos por cruce en los dos sentidos, actualizados el ${esc(data.generated_at.slice(0, 10))}. Un fallo, suspensión o jugada ilegal pierde solo esa partida; el torneo continúa.
-    Elo de Bradley-Terry: media 1500; 200 puntos de diferencia ≈ 76 % de victorias.</p>
+    <p class="muted">Todos los bots del repositorio participan en una liga todos contra todos, sin iniciar sesión. Se juegan ${data.games_per_pair} repartos por cruce en los dos sentidos, actualizados el ${esc(data.generated_at.slice(0, 10))}. Un fallo, suspensión o jugada ilegal pierde solo esa partida; el torneo continúa.</p>
+    ${top.length ? `<section class="bot-podium" aria-label="Podio de los mejores bots">${podium}</section>` : ""}
     <div class="table-wrap"><table class="data"><thead><tr><th>#</th><th class="l">Bot</th><th class="l">Autor</th><th>Elo</th><th>Partidas</th><th>% victorias (± 95 %)</th><th>Faltas</th></tr></thead>
     <tbody>${data.ranking.map((r, i) => `<tr><td>${i + 1}</td><td class="l"><code>${esc(r.name)}</code></td><td class="l">${esc(r.author || "—")}</td><td>${Math.round(r.elo)}</td><td>${r.games}</td><td>${pctTxt(r)}</td><td>${r.errors}</td></tr>`).join("")}</tbody></table></div>`;
 }

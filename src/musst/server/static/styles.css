@@ -128,6 +128,15 @@ label.field { display: grid; gap: 4px; font-weight: 500; font-size: .92rem; }
 .field input, .field select { padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); }
 .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .table-wrap { overflow-x: auto; }
+.bot-podium { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; gap: 12px; margin: 18px 0 24px; }
+.podium-place { min-height: 132px; display: grid; justify-items: center; align-content: center; gap: 5px; padding: 14px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); text-align: center; }
+.podium-place strong { max-width: 100%; overflow-wrap: anywhere; }
+.podium-place span:last-child { color: var(--muted); font-size: .85rem; }
+.podium-medal { font-size: 2rem; line-height: 1; }
+.podium-1 { min-height: 168px; border-color: #c99a32; }
+.podium-2 { border-color: #9ba3a9; }
+.podium-3 { border-color: #a86f45; }
+@media (max-width: 620px) { .bot-podium { grid-template-columns: 1fr; } .podium-place, .podium-1 { min-height: 112px; } }
 table.data { border-collapse: collapse; width: 100%; font-size: .92rem; }
 table.data th, table.data td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
 table.data th:first-child, table.data td:first-child, table.data td.l, table.data th.l { text-align: left; }
