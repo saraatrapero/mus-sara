@@ -16,10 +16,16 @@ from musst.bots.api import (
     MusAction,
     OrdagoAction,
     PassAction,
-    RejectAction,
     RaiseAction,
+    RejectAction,
 )
-from musst.bots.toolkit import discard_options, hand_strength, hand_value, lance_winner, sample_world
+from musst.bots.toolkit import (
+    discard_options,
+    hand_strength,
+    hand_value,
+    lance_winner,
+    sample_world,
+)
 from musst.engine.observation import Observation
 
 
@@ -52,14 +58,19 @@ def _concrete_actions(obs: Observation) -> list[Action]:
             minimum = spec.min_amount or 2
             maximum = spec.max_amount or minimum
             values = sorted(set((minimum, (minimum + maximum) // 2, maximum)))
-            actions.extend(BetAction(value) if kind == "bet" else RaiseAction(value) for value in values)
+            actions.extend(
+                BetAction(value) if kind == "bet" else RaiseAction(value) for value in values
+            )
 
     return actions or [spec.default() for spec in obs.legal_actions if spec.type != "discard"]
 
 
 def _value(obs: Observation, action: Action) -> float:
     strength = hand_value(obs.hand)
-    lance_strength = hand_strength(obs.hand, obs.phase if obs.phase in ("grande", "chica", "pares", "juego", "punto") else "grande")
+    lance_strength = hand_strength(
+        obs.hand,
+        obs.phase if obs.phase in ("grande", "chica", "pares", "juego", "punto") else "grande",
+    )
 
     if isinstance(action, DiscardAction):
         discarded = set(action.cards)
@@ -80,7 +91,11 @@ def _value(obs: Observation, action: Action) -> float:
         return lance_strength + max(0.0, (obs.target - max(obs.score)) / obs.target)
     if isinstance(action, (BetAction, RaiseAction)):
         stake = action.amount
-        return lance_strength - stake / 60 + max(0.0, (obs.target - max(obs.score)) / obs.target) * 0.15
+        return (
+            lance_strength
+            - stake / 60
+            + max(0.0, (obs.target - max(obs.score)) / obs.target) * 0.15
+        )
     return lance_strength
 
 
@@ -108,7 +123,9 @@ class GreedyBot(_SearchBot):
     def _choose(self, obs: Observation) -> Action:
         actions = _concrete_actions(obs)
         chosen = max(actions, key=lambda action: _value(obs, action))
-        self.last_explanation = f"Greedy elige {chosen.type}: maximiza el valor inmediato de la mano y del marcador"
+        self.last_explanation = (
+            f"Greedy elige {chosen.type}: maximiza el valor inmediato de la mano y del marcador"
+        )
         return chosen
 
 
@@ -131,7 +148,9 @@ class DijkstraBot(_SearchBot):
             heapq.heappush(queue, (immediate + score_risk + depth * 0.02, index, action, node))
 
         _, _, chosen, node = heapq.heappop(queue)
-        self.last_explanation = f"Dijkstra elige {chosen.type}: minimiza coste y riesgo acumulado desde {node}"
+        self.last_explanation = (
+            f"Dijkstra elige {chosen.type}: minimiza coste y riesgo acumulado desde {node}"
+        )
         return chosen
 
 
@@ -146,7 +165,10 @@ class AStarBot(_SearchBot):
         points_needed = max(0, obs.target - obs.score[obs.team])
         heuristic = max(0.0, 1.0 - strength - (points_needed / obs.target) * 0.35)
 
-        worlds = [sample_world(obs, random.Random(obs.round_no * 1000 + i), max_tries=12) for i in range(8)]
+        worlds = [
+            sample_world(obs, random.Random(obs.round_no * 1000 + i), max_tries=12)
+            for i in range(8)
+        ]
         possible_wins = 0
         if worlds and obs.phase in ("grande", "chica", "pares", "juego", "punto"):
             for world in worlds:
@@ -166,4 +188,4 @@ class AStarBot(_SearchBot):
         return chosen
 
 
-__all__ = ["GreedyBot", "DijkstraBot", "AStarBot"]
+__all__ = ["AStarBot", "DijkstraBot", "GreedyBot"]

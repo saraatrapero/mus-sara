@@ -61,8 +61,12 @@ class ProfileUpdate(BaseModel):
 class NewGame(BaseModel):
     mode: Literal["rapida", "personalizada", "entrenamiento", "contra_bot", "campeonato"] = "rapida"
     name: str = Field(default="Tú", min_length=1, max_length=24)
-    partner: Literal["sencillo", "medio", "experto", "profesional", "dijkstra", "greedy", "a_star", "human"] = "sencillo"
-    rivals: Literal["sencillo", "medio", "experto", "profesional", "dijkstra", "greedy", "a_star"] = "medio"
+    partner: Literal[
+        "sencillo", "medio", "experto", "profesional", "dijkstra", "greedy", "a_star", "human"
+    ] = "sencillo"
+    rivals: Literal[
+        "sencillo", "medio", "experto", "profesional", "dijkstra", "greedy", "a_star"
+    ] = "medio"
     target: int = Field(default=40, ge=10, le=60)
     seed: int | None = Field(default=None, ge=0, le=2**31)
     names: dict[str, str] = Field(default_factory=dict)
