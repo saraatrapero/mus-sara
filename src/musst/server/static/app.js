@@ -893,7 +893,8 @@ function renderGame(bubbles = current?.bubbles || {}) {
   if (review) {
     center = reviewTextHTML(review, obs, names);
   } else if (obs.awaiting_deal) {
-    center = `<div><div class="lance-title">Reparto</div><p>${obs.dealer === me ? "Te toca repartir." : `Reparte ${esc(names[obs.dealer])}; la baraja está a su derecha.`} Es mano ${esc(names[obs.mano])}.</p>
+    const cutter = (obs.dealer - 1 + 4) % 4;
+    center = `<div><div class="lance-title">Reparto</div><p><strong>Reparte el postre:</strong> ${esc(names[obs.dealer])}. <strong>Corta a su izquierda:</strong> ${esc(names[cutter])}. Es mano ${esc(names[obs.mano])}.</p>
       <button class="btn primary" id="deal-btn">${obs.dealer === me ? "Repartir" : "¿Repartimos? Sí"}</button></div>`;
   } else {
     const playing = LANCE[obs.phase] ? `<small class="now-playing">Se juega a</small>` : "";
@@ -1401,27 +1402,21 @@ async function showSummary() {
     openModal(`
       <h2 id="modal-title">${won ? "Victoria" : "Derrota"} · ${a.result.reason === "ordago" ? "por órdago" : `${a.result.score[a.result.my_team]} – ${a.result.score[1 - a.result.my_team]}`}</h2>
       <div class="summary-box">
-      <h3>Cómo terminó</h3>
+      <h3>Resultado</h3>
       ${endingHTML(a, obs)}
-      ${(obs.seats || []).filter((x) => x.kind === "bot" && PERSONAJES[x.avatar]).map((x) => {
-        const theyWon = (x.seat % 2) === a.result.winner;
-        const q = frase(x.avatar, theyWon ? "gana_partida" : "pierde_partida", a.result.score[0] + a.result.score[1]);
-        return q ? `<p class="quote"><span class="quote-face">${faceSVG(x.seat, { pos: "bottom", lookPos: "mesa", avatar: x.avatar })}</span><strong>${esc(x.name)}:</strong> «${esc(q)}»</p>` : "";
-      }).join("")}
-      ${(a.bot_reasons || []).length ? `<h3>Qué decidieron los bots y por qué</h3><p class="muted">Cada bot explica sus envites, sus «quiero» / «no quiero» y sus órdagos con lo que calculó en ese momento (sin ver tus cartas).</p>${botReasonsHTML(a, obs)}` : ""}
-      <h3>Métodos y agentes de los bots</h3>
-      ${quickAgentSummary(a)}
+      <p><strong>Marcador final:</strong> ${a.result.score[a.result.my_team]} – ${a.result.score[1 - a.result.my_team]} · ${s.envites} envites · ${s.ordagos} órdagos.</p>
       <h3>Momentos clave</h3>
-      <ul>${a.key_moments.map((m) => `<li>Jugada ${m.round_no}: ${esc(momentoEs(m.description, a.result.my_team))}</li>`).join("") || "<li>Partida tranquila.</li>"}</ul>
-      <h3>Tu partida</h3>
-      <div class="table-wrap"><table class="data"><tbody>
-        <tr><td>Envites</td><td>${s.envites}</td></tr><tr><td>Órdagos</td><td>${s.ordagos}</td></tr>
-        <tr><td>Aceptaciones / rechazos</td><td>${s.aceptaciones} / ${s.rechazos}</td></tr>
-        <tr><td>Mus / cortes</td><td>${s.mus} / ${s.cortes}</td></tr>
-        <tr><td>Envites con mano débil</td><td>${s.frecuencia_farol == null ? "—" : Math.round(s.frecuencia_farol * 100) + " %"}</td></tr>
-      </tbody></table></div>
-      ${(a.counterfactuals || []).length ? `<h3>¿Y si hubieras elegido lo contrario?</h3><ul>${a.counterfactuals.map((c) => `<li>Jugada ${c.jugada}, ${esc(c.lance)} ${c.ordago ? "(órdago)" : `(envite de ${c.envite})`}: elegiste <strong>${c.elegiste}</strong> → ${fmtOutcome(c, c.tantos)}; lo contrario → ${fmtOutcome(c, c.alternativa)}. ${c.acierto ? "✓ Buena decisión" : "✗ Lo contrario era mejor"}</li>`).join("")}</ul><p class="muted">Calculado con las manos ya reveladas, solo al terminar la partida.</p>` : ""}
-      ${a.learning.length ? `<h3>Aprendizaje del bot</h3><ul>${a.learning.map((l) => `<li>${esc(l)}</li>`).join("")}</ul>` : ""}
+      <ul>${a.key_moments.slice(0, 3).map((m) => `<li>Jugada ${m.round_no}: ${esc(momentoEs(m.description, a.result.my_team))}</li>`).join("") || "<li>Partida tranquila.</li>"}</ul>
+      <p class="muted"><strong>Decisiones:</strong> ${Number((a.agent_summary || {}).total_decisions || 0)} registradas.</p>
+      <details class="more"><summary>Ver detalle completo</summary>
+        <h3>Estadísticas</h3>
+        <div class="table-wrap"><table class="data"><tbody>
+          <tr><td>Aceptaciones / rechazos</td><td>${s.aceptaciones} / ${s.rechazos}</td></tr>
+          <tr><td>Mus / cortes</td><td>${s.mus} / ${s.cortes}</td></tr>
+          <tr><td>Envites con mano débil</td><td>${s.frecuencia_farol == null ? "—" : Math.round(s.frecuencia_farol * 100) + " %"}</td></tr>
+        </tbody></table></div>
+        ${botReasonsHTML(a, obs)}
+      </details>
       </div>
       <div class="row" style="margin-top:12px">
         <button class="btn primary" id="again">Otra partida</button>
@@ -2447,21 +2442,7 @@ async function boot() {
     joinRoom(sala[1]);
     return;
   }
-  const saved = store.get("musst.current", null);
-  if (saved?.room?.guest) {
-    try { await enterRoomAsGuest(saved.room.code); return; } catch { store.set("musst.current", null); }
-  }
-  if (saved && saved.id) {
-    try {
-      const obs = await api(`/api/games/${saved.id}`, { token: saved.token });
-      if (!obs.finished) {
-        current = { ...saved, obs, seen: maxSeq(obs), help: false, discard: new Set(), amount: 2, busy: false };
-        go("game");
-        if (current.room?.host) startRoomHost();
-        return;
-      }
-    } catch { store.set("musst.current", null); }
-  }
+  store.set("musst.current", null);
   go("home");
 }
 boot();

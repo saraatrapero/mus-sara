@@ -28,6 +28,18 @@ def test_reparto_inicial_cuatro_cartas_y_mano_a_la_derecha_del_que_reparte():
     assert len(game.deck) == 24
 
 
+def test_postre_reparte_y_el_jugador_de_la_izquierda_corta():
+    game = MusGame(seed=3)
+    postre = game.dealer
+    mano = game.mano
+    assert mano == (postre + 1) % 4
+    assert game.turn == mano
+    assert game.turn != postre
+    cutter = (postre - 1) % 4
+    assert cutter != postre
+    assert cutter in range(4)
+
+
 def test_cortar_mus_empieza_la_grande():
     game = MusGame(seed=3)
     game.apply(game.mano, CutMusAction())
