@@ -152,7 +152,11 @@ class Repository:
     def conn(self) -> Iterator[sqlite3.Connection]:
         if self._shared is not None:
             with self._lock:
-                yield self._shared
+                try:
+                    yield self._shared
+                except BaseException:
+                    self._shared.rollback()
+                    raise
                 self._shared.commit()
             return
         connection = getattr(self._local, "conn", None)
@@ -160,7 +164,13 @@ class Repository:
             connection = sqlite3.connect(self.path)
             connection.execute("PRAGMA foreign_keys = ON")
             self._local.conn = connection
-        yield connection
+        # Si algo falla a mitad (p. ej. un nombre de usuario repetido), se deshace la transacción:
+        # si no, se quedaba abierta y bloqueaba la base de datos para las peticiones siguientes.
+        try:
+            yield connection
+        except BaseException:
+            connection.rollback()
+            raise
         connection.commit()
 
     # ------------------------------------------------------------------ usuarios
