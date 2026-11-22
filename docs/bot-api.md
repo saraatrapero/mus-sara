@@ -189,6 +189,13 @@ observación en JSON por la entrada estándar y responde con la acción por la s
 | No lanzar excepciones | Excepción → pierdes la partida |
 | No usar `os`, `subprocess`, `socket`, `eval`, `exec`, `open` | El PR no pasa la validación |
 
+Un test (`tests/bot_conformance/test_codigo_seguro.py`, en la CI de cada PR) analiza el AST de
+todos los `.py` de `bots/<nombre>/`: solo se pueden importar módulos de cálculo (`random`, `math`,
+`collections`, `itertools`, `numpy`…) y el API público (`musst.bots.api`, `musst.bots.toolkit`,
+`musst.engine.evaluation`, `musst.engine.cards`, `musst.engine.config`); se rechazan `eval`,
+`exec`, `compile`, `open`, `__import__`, `getattr` con nombres calculados o privados y los
+atributos de introspección (`__dict__`, `__globals__`, `f_back`…).
+
 Tus `print()` no rompen el protocolo (se descartan). El proceso arranca en un directorio
 temporal vacío, sin variables de entorno del servidor y con límites de CPU, memoria y ficheros.
 
