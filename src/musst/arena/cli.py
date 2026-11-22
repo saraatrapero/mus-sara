@@ -37,7 +37,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.participantes:
         args.only = [p.strip() for p in args.participantes.split(",") if p.strip()]
-    entries = [e for e in all_entries(sandboxed=True) if e.name not in args.exclude]
+    # Los alias (p. ej. «profesional» = «experto») no se repiten en la clasificación.
+    entries = [e for e in all_entries(sandboxed=True) if e.name not in args.exclude and not e.alias]
     if args.only:
         entries = [e for e in entries if e.name in args.only]
     participants = [Participant(e.name, e.factory, e.author, e.version) for e in entries]

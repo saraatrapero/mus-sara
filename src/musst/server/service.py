@@ -93,7 +93,7 @@ class MusService:
         return session, seat
 
     def _entries(self) -> list[BotEntry]:
-        return all_entries(sandboxed=True) if self.external_bots else builtin_entries()
+        return all_entries() if self.external_bots else builtin_entries()
 
     # ------------------------------------------------------------------ perfil
     @staticmethod
@@ -204,7 +204,7 @@ class MusService:
         rivals = body.get("rivals", "medio")
         target = int(body.get("target", 40))
         seed = body.get("seed")
-        available_bots = {entry.name for entry in all_entries(sandboxed=True)}
+        available_bots = {entry.name for entry in self._entries()}
         if mode not in MODES or rivals not in available_bots:
             raise ApiError(422, "Parámetros de partida no válidos")
         if partner != "human" and partner not in available_bots:
@@ -406,6 +406,7 @@ class MusService:
                 "level": e.level,
                 "external": e.external,
                 "description": e.description,
+                "alias": e.alias,
             }
             for e in self._entries()
         ]

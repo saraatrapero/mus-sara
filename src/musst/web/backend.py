@@ -26,9 +26,11 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
+from musst.bots import registry
 from musst.persistence.db import Repository, User
 from musst.server.service import ApiError, MusService, check_credentials
 
@@ -44,7 +46,11 @@ class LocalBackend:
         else:
             self.repo = Repository(":memory:")
             self.profile_file = None
-        self.service = MusService(self.repo, human_partner=False, external_bots=False)
+        if sys.platform == "emscripten":
+            # En el navegador no hay subprocesos: los bots de bots/ (aceptados en el repo y
+            # empaquetados en musst.zip) se cargan en el mismo intérprete.
+            registry.SANDBOX_DEFAULT = False
+        self.service = MusService(self.repo, human_partner=False, external_bots=True)
         self.user: User | None = self._load_profile()
 
     # ------------------------------------------------------------------ perfil local

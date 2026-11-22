@@ -10,6 +10,16 @@ from pathlib import Path
 from musst.bots.api import Bot
 
 REPO_BOTS_DIR = Path(__file__).resolve().parents[3] / "bots"
+BUNDLED_BOTS_DIR = Path(__file__).resolve().parents[2] / "musst_bots"
+"""En la web (Pyodide) los bots de ``bots/`` viajan dentro de ``musst.zip`` en ``musst_bots/``."""
+
+SANDBOX_DEFAULT = True
+"""Bots externos en subproceso (servidor y torneo). En el navegador no se pueden lanzar procesos:
+la web lo pone a ``False`` y los carga en el mismo intérprete (son bots aceptados en el repo)."""
+
+
+def default_bots_dir() -> Path:
+    return REPO_BOTS_DIR if REPO_BOTS_DIR.is_dir() else BUNDLED_BOTS_DIR
 
 
 @dataclass(frozen=True)
@@ -21,6 +31,8 @@ class BotEntry:
     factory: Callable[[], Bot]
     external: bool = False
     description: str = ""
+    alias: bool = False
+    """Otro nombre de un bot que ya está en la lista (no se repite en el ranking ni al elegir)."""
 
 
 def builtin_entries() -> list[BotEntry]:
@@ -54,6 +66,7 @@ def builtin_entries() -> list[BotEntry]:
             "profesional",
             ProBot,
             description="Alias compatible del bot experto",
+            alias=True,
         ),
         BotEntry(
             "dijkstra",
@@ -96,11 +109,11 @@ def builtin_entries() -> list[BotEntry]:
     ]
 
 
-def external_entries(bots_dir: Path | None = None, sandboxed: bool = True) -> list[BotEntry]:
+def external_entries(bots_dir: Path | None = None, sandboxed: bool | None = None) -> list[BotEntry]:
     """Bots externos declarados en ``bots/<nombre>/bot.toml``."""
-    from musst.bots.sandbox import SubprocessBot
-
-    root = bots_dir or REPO_BOTS_DIR
+    if sandboxed is None:
+        sandboxed = SANDBOX_DEFAULT
+    root = bots_dir or default_bots_dir()
     entries: list[BotEntry] = []
     if not root.is_dir():
         return entries
@@ -113,6 +126,8 @@ def external_entries(bots_dir: Path | None = None, sandboxed: bool = True) -> li
 
         def factory(bot_dir: Path = bot_dir, entry: str = entry, name: str = name) -> Bot:
             if sandboxed:
+                from musst.bots.sandbox import SubprocessBot
+
                 return SubprocessBot(bot_dir, entry, name=name)
             return _load_inprocess(bot_dir, entry)
 
@@ -144,7 +159,7 @@ def _load_inprocess(bot_dir: Path, entrypoint: str) -> Bot:
     return bot
 
 
-def all_entries(bots_dir: Path | None = None, sandboxed: bool = True) -> list[BotEntry]:
+def all_entries(bots_dir: Path | None = None, sandboxed: bool | None = None) -> list[BotEntry]:
     return builtin_entries() + external_entries(bots_dir, sandboxed)
 
 

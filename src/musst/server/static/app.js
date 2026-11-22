@@ -492,7 +492,7 @@ function home() {
   api("/api/bots").then((bots) => {
     const options = document.getElementById("rival-options");
     if (!options) return;
-    options.innerHTML = bots.filter((bot) => !["random"].includes(bot.name)).map((bot, index) =>
+    options.innerHTML = bots.filter((bot) => bot.name !== "random" && !bot.alias).map((bot, index) =>
       `<label><input type="radio" name="rivals" value="${esc(bot.name)}" ${index === 0 ? "checked" : ""}> <strong>${esc(bot.name)}</strong></label>`
     ).join("");
   }).catch(() => {});

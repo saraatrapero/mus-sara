@@ -66,8 +66,13 @@ def build(out: Path) -> None:
             rel = path.relative_to(PKG.parent)
             if path.is_dir() or "__pycache__" in rel.parts or "static" in rel.parts:
                 continue
-            if path.suffix in (".py", ".toml", ".typed"):
+            # .npz: pesos de la red del bot «inteligente» y tablas de mus-cunef
+            if path.suffix in (".py", ".toml", ".typed", ".npz"):
                 zf.write(path, rel.as_posix())
+        # Bots aceptados en bots/ (car_lu, compi, mi_bot…): en la web se cargan desde musst_bots/
+        for path in sorted((ROOT / "bots").glob("*/*")):
+            if path.suffix in (".py", ".toml") and "__pycache__" not in path.parts:
+                zf.write(path, (Path("musst_bots") / path.relative_to(ROOT / "bots")).as_posix())
 
 
 def main() -> None:

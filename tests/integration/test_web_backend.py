@@ -76,11 +76,12 @@ def test_token_ajeno_rechazado_y_accion_ilegal(backend):
     assert status == 422 and "no válida" in err["detail"]
 
 
-def test_sin_invitaciones_ni_bots_externos(backend):
+def test_sin_invitaciones_y_con_los_bots_aceptados(backend):
     status, _ = backend.handle("POST", "/api/games", {"partner": "human"}, None)
     assert status == 422
+    # Los bots de bots/ también se pueden elegir en la web (en el navegador, sin subproceso).
     _, bots = backend.handle("GET", "/api/bots", None, None)
-    assert bots and not any(b["external"] for b in bots)
+    assert {"car_lu", "compi", "mi_bot"} <= {b["name"] for b in bots if b["external"]}
     assert backend.handle("POST", "/api/games/x/join", {}, None)[0] == 422
 
 
