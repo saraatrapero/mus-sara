@@ -13,15 +13,33 @@ Práctica de **Inteligencia Artificial — 3º MAT-A, CUNEF Universidad, 2026/20
 |---|---|---|---|
 | Partida rápida, personalizada (yo con un bot contra 2 bots, yo y otra persona contra 2 bots, o 4 personas en el mismo dispositivo), contra un bot concreto; señas con las caras de los jugadores | Tutorial interactivo, aprender jugando, situaciones de entrenamiento, asistente «¿qué puedo hacer?» | Bot Arena, torneo automático, scoreboard, observar Bot vs Bot | Historial, replay ⏮ ◀ ▶ ⏭, estadísticas, estilo de juego, momentos clave, «¿y si hubieras elegido lo contrario?» |
 
+## La mejor IA
+
+**`inteligente`** es el bot más fuerte del proyecto. Es una red neuronal pequeña (numpy para
+jugar, PyTorch solo para entrenar) que recibe la observación de su asiento codificada como un
+vector de números y devuelve una probabilidad para cada acción legal. Se entrenó en dos pasos:
+primero **imitando** al bot de reglas `reglas` y después con **aprendizaje por refuerzo (PPO)**
+jugando contra una liga de rivales. Elegimos este diseño porque el mus tiene información oculta
+y faroles: en vez de programar a mano cuándo envidar o echar un órdago, la red lo aprende de
+millones de jugadas y el refuerzo la lleva más allá de las reglas que imitó. Viene de nuestro
+otro repositorio ([mus-cunef/mus](https://github.com/mus-cunef/mus)) a través de un adaptador
+([docs/bots-cunef.md](bots-cunef.md)).
+
+Medido con repartos duplicados (intervalo al 95 %): `inteligente` gana el 69,8 ± 2,3 % contra
+`reglas` (1.000 partidas) y el 58,7 ± 2,8 % contra `experto` (600 partidas). El mejor bot propio
+de este repositorio es **`experto`** (multiagente con Monte Carlo y modelo de jugador), que gana
+el 62,5 ± 3,7 % a `matematico`. La clasificación completa está en
+[Clasificación de bots](clasificacion.md).
+
 ## Empezar
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-pytest                                   # 150 tests
-musst-play --bots sencillo profesional   # una partida sin interfaz
-musst-arena --games 5                    # torneo entre todos los bots
+pytest                                   # todos los tests
+musst-play --bots sencillo experto       # una partida sin interfaz
+mus-torneo -n 5                          # torneo entre todos los bots (Elo de Bradley-Terry)
 MUSST_SECURE_COOKIES=0 uvicorn musst.server.app:app --reload   # web en http://localhost:8000
 ```
 
@@ -63,7 +81,7 @@ src/musst/
 bots/           bots externos (uno por carpeta, vía Pull Request)
 experiments/    experimentos reproducibles (escalera de niveles, adaptación)
 tests/          unit · property · privacy · integration · bot_conformance
-docs/           MkDocs (ReadTheDocs) + diseño de la Fase 0 + ADR
+docs/           MkDocs (ReadTheDocs) + ADR
 config/         reglas y parámetros de agentes
 ```
 
@@ -80,7 +98,6 @@ config/         reglas y parámetros de agentes
 | [Testing y experimentos](testing.md) | Pirámide de tests, privacidad, resultados medidos |
 | [Despliegue](deployment.md) | GitHub Pages con Pyodide, local, ReadTheDocs |
 | [Decisiones (ADR)](adr/index.md) | Por qué cada decisión, alternativas y limitaciones |
-| [Diseño de la Fase 0](design/00-indice.md) | Requisitos y arquitectura del proyecto |
 
 El proyecto usa el **Mus FEM de 4 jugadores en 2 parejas**. Las convenciones adicionales se indican y pueden configurarse.
 

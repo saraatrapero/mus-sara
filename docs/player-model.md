@@ -1,6 +1,6 @@
 # PlayerModel y aprendizaje
 
-Diseño completo: [design/07-player-model.md](design/07-player-model.md). Código: `src/musst/learning/`.
+Código: `src/musst/learning/`.
 
 ## Qué aprende
 
