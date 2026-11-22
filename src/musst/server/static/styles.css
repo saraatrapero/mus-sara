@@ -133,6 +133,7 @@ label.field { display: grid; gap: 4px; font-weight: 500; font-size: .92rem; }
 .podium-place strong { max-width: 100%; overflow-wrap: anywhere; }
 .podium-place span:last-child { color: var(--muted); font-size: .85rem; }
 .podium-medal { font-size: 2rem; line-height: 1; }
+.podium-champion { display: inline-block; margin-bottom: 2px; padding: 3px 7px; border-radius: 999px; background: var(--accent); color: var(--accent-fg); font-size: .72rem; font-weight: 800; text-transform: uppercase; }
 .podium-1 { min-height: 168px; border-color: #c99a32; }
 .podium-2 { border-color: #9ba3a9; }
 .podium-3 { border-color: #a86f45; }
