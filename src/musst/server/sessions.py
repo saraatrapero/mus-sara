@@ -29,7 +29,7 @@ from musst.server.razones import explain_move
 
 log = logging.getLogger("musst.public.server")
 
-BOT_LEVELS = ("sencillo", "medio", "profesional")
+BOT_LEVELS = ("sencillo", "medio", "experto", "profesional", "dijkstra", "greedy", "a_star")
 
 
 @dataclass
@@ -197,7 +197,7 @@ class SessionManager:
         return session, token
 
     def _make_bot(self, level: str, seed: int) -> Bot:
-        if level == "profesional":
+        if level in ("experto", "profesional"):
             from musst.agents.orchestrator import ProBot
 
             # La sesión ya aprende de los humanos al terminar (una sola vez por partida).

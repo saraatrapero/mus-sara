@@ -446,7 +446,10 @@ function home() {
         <fieldset class="seg-field"><legend>Dificultad de los bots</legend><div class="seg">
           <label><input type="radio" name="rivals" value="sencillo"> Fácil</label>
           <label><input type="radio" name="rivals" value="medio" checked> Normal</label>
-          <label><input type="radio" name="rivals" value="profesional"> Difícil</label>
+          <label><input type="radio" name="rivals" value="experto"> Experto</label>
+          <label><input type="radio" name="rivals" value="dijkstra"> Dijkstra</label>
+          <label><input type="radio" name="rivals" value="greedy"> Greedy</label>
+          <label><input type="radio" name="rivals" value="a_star"> A*</label>
         </div></fieldset>
         <fieldset class="seg-field"><legend>¿Con señas? <small class="muted">(gestos al compañero, como guiñar un ojo = la 31)</small></legend><div class="seg">
           <label><input type="radio" name="signals" value="1" ${settings.signals !== false ? "checked" : ""}> 👀 Con señas</label>
@@ -1507,7 +1510,7 @@ function learn() {
         <button class="btn" data-nav="training">Ver situaciones</button></div>
       <div class="panel stack"><span class="kicker">Entrenar</span><h2 class="card-title">Contra un bot</h2>
         <p class="muted">Elige un bot concreto y enfréntate a él tantas veces como quieras.</p>
-        <label class="field">Bot<select id="vs-bot"><option value="sencillo">Fácil (sencillo)</option><option value="medio">Normal (medio)</option><option value="profesional">Difícil (profesional)</option></select></label>
+        <label class="field">Bot<select id="vs-bot"><option value="sencillo">Sencillo</option><option value="medio">Medio</option><option value="experto">Experto</option><option value="dijkstra">Dijkstra</option><option value="greedy">Greedy</option><option value="a_star">A*</option></select></label>
         <button class="btn" id="vs-start">Jugar contra este bot</button></div>
     </div></div>`));
   document.getElementById("vs-start").onclick = () => startGame({ mode: "contra_bot", rivals: document.getElementById("vs-bot").value, partner: "sencillo" });

@@ -14,6 +14,15 @@ def client():
     return TestClient(create_app(Repository(":memory:"), dev_mode=False))
 
 
+@pytest.mark.parametrize("rival", ["experto", "dijkstra", "greedy", "a_star"])
+def test_se_pueden_elegir_bots_nuevos(client, rival):
+    response = client.post("/api/games", json={"rivals": rival, "partner": "sencillo", "seed": 4})
+    assert response.status_code == 200
+    data = response.json()
+    levels = {seat["level"] for seat in data["observation"].get("seats", []) if seat.get("level")}
+    assert rival in levels
+
+
 def play_until_end(client, game_id, token, obs, limit=600):
     headers = {"X-Seat-Token": token}
     for _ in range(limit):

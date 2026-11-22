@@ -4,7 +4,7 @@ import pytest
 
 from musst.bots.builtin.simple import SimpleBot
 from musst.bots.cunef import basico, disponibles, hay_numpy, reglas
-from musst.bots.registry import get_entry
+from musst.bots.registry import all_entries, get_entry
 from musst.runtime.runner import play_game
 
 necesita_numpy = pytest.mark.skipif(not hay_numpy(), reason="reglas necesita numpy")
@@ -40,6 +40,12 @@ def test_reglas_aprende_de_las_manos_enseñadas():
     bot = reglas(seed=1)
     play_game([bot, SimpleBot(1), reglas(seed=2), SimpleBot(2)], seed=7, mode="tournament")
     assert bot._avisadas >= 1  # recibió on_hand_end con las cartas de las jugadas terminadas
+
+
+def test_registro_incluye_bots_algoritmicos_y_experto():
+    nombres = {entry.name for entry in all_entries()}
+    assert {"experto", "dijkstra", "greedy", "a_star", "profesional"} <= nombres
+    assert get_entry("experto").description.startswith("Bot experto")
 
 
 def test_registro_incluye_los_bots_de_mus_cunef():

@@ -28,6 +28,7 @@ def builtin_entries() -> list[BotEntry]:
     from musst.bots.builtin.medium import MediumBot
     from musst.bots.builtin.pro import ProBot
     from musst.bots.builtin.simple import RandomBot, SimpleBot
+    from musst.bots.builtin.algorithms import AStarBot, DijkstraBot, GreedyBot
     from musst.bots.cunef import disponibles
 
     return [
@@ -39,13 +40,24 @@ def builtin_entries() -> list[BotEntry]:
             "medio", "MUS.ST", "1.0", "medio", MediumBot, description="Monte Carlo + marcador"
         ),
         BotEntry(
+            "experto",
+            "MUS.ST",
+            "1.0",
+            "experto",
+            ProBot,
+            description="Bot experto: multiagente + modelo de jugador",
+        ),
+        BotEntry(
             "profesional",
             "MUS.ST",
             "1.0",
             "profesional",
             ProBot,
-            description="Multiagente + modelo de jugador",
+            description="Alias compatible del bot experto",
         ),
+        BotEntry("dijkstra", "MUS.ST", "1.0", "dijkstra", DijkstraBot, description="Búsqueda Dijkstra sobre acciones legales"),
+        BotEntry("greedy", "MUS.ST", "1.0", "greedy", GreedyBot, description="Decisión voraz por valor inmediato"),
+          BotEntry("a_star", "MUS.ST", "1.0", "a_star", AStarBot, description="Búsqueda A* con heurística de mano"),
         BotEntry(
             "matematico",
             "MUS.ST",
