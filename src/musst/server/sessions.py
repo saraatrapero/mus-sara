@@ -25,6 +25,7 @@ from musst.learning.updater import Learner
 from musst.persistence.db import Repository, RepositoryModelStore
 from musst.runtime.runner import FallbackBot, offer_signals
 from musst.server.personajes import PERSONAJES, reparto
+from musst.server.razones import explain_move
 
 log = logging.getLogger("musst.public.server")
 
@@ -57,6 +58,7 @@ class GameSession:
     invite_token: str | None = None
     learning: list[str] = field(default_factory=list)
     decisions: list[dict[str, Any]] = field(default_factory=list)  # solo modo desarrollo
+    reasons: list[dict[str, Any]] = field(default_factory=list)  # «por qué» de cada bot (al final)
     dealt_round: int = 0  # última jugada repartida con permiso del jugador ("¿Repartimos?")
     lock: threading.Lock = field(default_factory=threading.Lock)
     last_activity: float = field(default_factory=time.time)
@@ -332,6 +334,12 @@ class SessionManager:
                 action = seat.bot.decide(obs)
                 game.apply(turn, action)
             session.actions.append({"seat": turn, "action": action_to_dict(action)})
+            try:
+                why = explain_move(obs, action, seat.bot)
+            except Exception:  # la explicación nunca rompe la partida
+                why = None
+            if why is not None:
+                session.reasons.append(why)
             self._bot_signals(session)
             last = getattr(seat.bot, "last_decision", None)
             if isinstance(last, Decision):
@@ -426,6 +434,10 @@ class SessionManager:
             obs["hand"] = []  # aún no se han repartido las cartas a la vista del jugador
             obs["legal_actions"] = []
             obs["available_signals"] = []
+        # Por qué jugó cada bot en la jugada que acaba de terminar: ya se han enseñado las
+        # cartas, así que no delata nada (se muestra en el conteo entre jugadas).
+        last = session.game.round_no - 1
+        obs["round_reasons"] = [r for r in session.reasons if r["round"] == last]
         if session.status == "FINISHED":
             obs["learning"] = session.learning
         return obs
@@ -458,9 +470,20 @@ class SessionManager:
             math_method = matematica.get("metodo")
             if isinstance(math_method, dict):
                 decisions_method = math_method.get("decisiones_rivales")
-                method = "Monte Carlo + Bayes" if decisions_method and decisions_method.startswith("Bayes:") else "muestreo de Monte Carlo"
+                method = (
+                    "Monte Carlo + Bayes"
+                    if decisions_method and decisions_method.startswith("Bayes:")
+                    else "muestreo de Monte Carlo"
+                )
             else:
-                method = item.get("narrative") or "estrategia clásica"
+                narrative = str(item.get("narrative") or "")
+                # «EV(PASS)=+0.40; …» es el detalle interno del cálculo: el método es el
+                # valor esperado sobre repartos simulados (Monte Carlo).
+                method = (
+                    "Monte Carlo + valor esperado"
+                    if narrative.startswith("EV(")
+                    else narrative or "estrategia clásica"
+                )
             if method in method_names:
                 method = method_names[method]
             method_counts[method] = method_counts.get(method, 0) + 1
@@ -476,11 +499,16 @@ class SessionManager:
             "counterfactuals": decision_counterfactuals(history, seat.index),
             "learning": session.learning,
             "history": history,
+            "bot_reasons": session.reasons,
             "agent_summary": {
                 "total_decisions": len(session.decisions),
-                "by_agent": dict(sorted(agent_counts.items(), key=lambda pair: (-pair[1], pair[0]))),
+                "by_agent": dict(
+                    sorted(agent_counts.items(), key=lambda pair: (-pair[1], pair[0]))
+                ),
             },
-            "method_summary": dict(sorted(method_counts.items(), key=lambda pair: (-pair[1], pair[0]))),
+            "method_summary": dict(
+                sorted(method_counts.items(), key=lambda pair: (-pair[1], pair[0]))
+            ),
             "decisions": session.decisions,
         }
 

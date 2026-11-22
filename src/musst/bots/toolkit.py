@@ -19,6 +19,21 @@ from musst.engine.signals import truthful_signals
 LANCE_NAMES = ("grande", "chica", "pares", "juego", "punto")
 
 
+EARLY_GAME_FRACTION = 0.5
+"""Principio de partida: ninguna pareja ha llegado a esta fracción de los tantos."""
+
+
+def early_game(obs: Observation) -> bool:
+    """¿Es pronto para jugarse la partida entera a un órdago?
+
+    El reglamento no cambia (el órdago querido decide la partida, FEM VII.12); es solo
+    prudencia de los bots: al principio no hay motivo para arriesgarlo todo en una jugada, y
+    la partida se juega entera (petición de la usuaria).
+    """
+    limit = obs.target * EARLY_GAME_FRACTION
+    return max(obs.score) < limit
+
+
 def unseen_cards(obs: Observation) -> list[Card]:
     """Cartas que pueden estar en manos ajenas: todas menos las mías y mis descartes de la jugada."""
     mine = set(obs.hand)

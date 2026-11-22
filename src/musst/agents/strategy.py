@@ -8,6 +8,7 @@ from musst.agents.base import AgentContext, Decision, ScoredAction
 from musst.agents.specialists import current_lance_bets
 from musst.bots.toolkit import (
     discard_options,
+    early_game,
     hand_value,
     keep_heuristic_discard,
     sample_world,
@@ -49,6 +50,10 @@ P(ganarlo) ≥ 0.85. Arriesgar la partida entera estando ganando es regalarla.""
 ORDAGO_TO_FINISH = 0.3
 """A punto de salir (el «no quiero» ya nos da la partida), se echa órdago con P(ganarlo) ≥ 0.3:
 el rival tiene que jugarse la partida entera o perderla (petición de la usuaria)."""
+ORDAGO_EARLY = 0.92
+"""Al principio de la partida (nadie ha llegado a la mitad de los tantos) solo se echa o se ve
+un órdago con P(ganarlo) ≥ 0.92: la partida se juega entera, no a la primera jugada. Es
+prudencia del bot; la regla del órdago no cambia (petición de la usuaria)."""
 RIVAL_CLOSE = 5
 """Si al rival le faltan estos tantos o menos, ir por delante ya no es motivo para ser prudente."""
 
@@ -109,6 +114,9 @@ class StrategyAgent:
         pending = obs.current_bet
         on_reject = max(1, pending.stake if pending is not None else 1)
         finishing = my_left <= on_reject  # si no lo quieren, he ganado la partida
+        early = early_game(obs)
+        if early:
+            ordago_ok = p_ord >= max(sure, ORDAGO_EARLY)
         if finishing and p_ord >= ORDAGO_TO_FINISH:
             ordago_ok = True
         if "pass" in types:  # lance abierto
@@ -150,6 +158,8 @@ class StrategyAgent:
             threshold = ctx.estimate("marcador", "ordago_threshold", 0.55).value
             if leading:
                 threshold = max(threshold, ORDAGO_LEADING)
+            if early and not reject_loses:
+                threshold = max(threshold, ORDAGO_EARLY)
             if accept_type:
                 add(accept_action, (p - threshold) * game_value, game_value * 0.5, p_bluff=p_bluff)
             # Se compara contra rechazar (referencia 0): aceptar si P(ganar) supera el umbral

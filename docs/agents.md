@@ -63,6 +63,10 @@ No es lo mismo un envite a 5-5 que a 39-10. Además del apetito de riesgo del `S
   le falta 1 y envida a grande), echa **órdago** con P(ganarlo) ≥ 0,3 (`ORDAGO_TO_FINISH`): si no
   lo quieren, ha ganado la partida; si lo quieren, se juega con buenas opciones. Con una mano sin
   ninguna opción, no.
+- **Principio de partida** (ninguna pareja ha llegado a la mitad de los tantos, `early_game`):
+  solo echa o quiere un órdago con P(ganarlo) ≥ 0,92 (`ORDAGO_EARLY`; el nivel sencillo, con
+  fuerza ≥ 95/100). La regla no cambia (el órdago querido decide la partida, FEM VII.12): es
+  prudencia, para que la partida se juegue entera y no se decida en la primera jugada.
 - **Rival a punto de ganar** (le faltan 5 o menos, `RIVAL_CLOSE`): más agresivo. Ir por delante
   deja de ser motivo para reservarse el órdago, y farolea más.
 - **Un «no quiero» que regala la partida** se valora como perder la partida (no como perder 1 o
@@ -97,3 +101,12 @@ caricaturas y las frases están en `server/static/personajes.js`. Las caricatura
 donde mira cada jugador y hacen los gestos oficiales de las señas; el bocadillo dice siempre
 la jugada y, a veces, la coletilla del personaje. Los personajes son solo de presentación:
 el nivel de juego (sencillo, medio, profesional) no cambia.
+
+## Por qué ha hecho cada bot lo que ha hecho (resumen final)
+
+Durante la partida cada decisión de un bot se guarda con una frase en castellano
+(`musst/server/razones.py`): en los niveles por agentes, la probabilidad de ganar el lance, la de
+ganar si le quieren el envite y el valor esperado de la opción elegida frente a la siguiente
+(o que es un farol); en el nivel sencillo, la fuerza heurística de la mano (0–100) y la regla
+que aplicó. Solo se enseña **al terminar** (`bot_reasons` en `/api/games/{id}/analysis`), en el
+mismo cuadro que el resumen: antes delataría sus cartas.

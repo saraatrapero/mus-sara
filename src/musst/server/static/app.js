@@ -14,7 +14,7 @@ const $modalBody = document.getElementById("modal-body");
 
 // ------------------------------------------------------------------ ajustes
 const DEFAULT_SETTINGS = {
-  theme: "auto", text_size: 1, reduce_motion: false, sound: true, voice: true, signals: true, speed: 1, table: "verde", card_back: "rayas",
+  theme: "auto", text_size: 1, reduce_motion: false, sound: true, voice: true, signals: true, speed: 1.5, table: "verde", card_back: "rayas",
 };
 const store = {
   get(key, fallback) {
@@ -23,6 +23,8 @@ const store = {
   set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* sin almacenamiento */ } },
 };
 let settings = { ...DEFAULT_SETTINGS, ...store.get("musst.settings", {}) };
+// Escala de velocidad v2 (la partida iba demasiado rápida): se traducen los ajustes guardados.
+if (settings.speed_v !== 2) { settings.speed = { 0.5: 0.8, 1: 1.5, 1.6: 2.2 }[settings.speed] ?? 1.5; settings.speed_v = 2; store.set("musst.settings", settings); }
 let user = null;
 let guest = false;
 let current = null; // partida en curso
@@ -40,6 +42,13 @@ function applySettings() {
   mute.textContent = settings.sound ? "🔊" : "🔇";
   mute.setAttribute("aria-pressed", String(!settings.sound));
 }
+// Rapidez de la partida: lo que tardan los bots, los bocadillos y las animaciones.
+const SPEEDS = [[2.2, "🐢 Lento"], [1.5, "Medio"], [0.8, "🐇 Rápido"]];
+const speedSeg = (name) => `<div class="seg speed-seg" role="radiogroup" aria-label="Rapidez">${SPEEDS.map(([v, l]) => `<label><input type="radio" name="${name}" value="${v}" ${Number(settings.speed) === v ? "checked" : ""}> ${l}</label>`).join("")}</div>`;
+function bindSpeed(name) {
+  document.querySelectorAll(`input[name="${name}"]`).forEach((r) => (r.onchange = () => { settings.speed = Number(r.value); saveSettings(); }));
+}
+
 function saveSettings() {
   store.set("musst.settings", settings);
   applySettings();
@@ -142,7 +151,7 @@ async function apiCall(path, { method = "GET", body, token } = {}) {
 const fmtOutcome = (c, v) => (c.ordago && Math.abs(v) === c.envite ? (v > 0 ? "ganas la partida" : "pierdes la partida") : `${v > 0 ? "+" : ""}${v} tantos`);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const h = (html) => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content; };
-const sleep = (ms) => new Promise((r) => setTimeout(r, current?.quick ? 30 : ms * (settings.reduce_motion ? 0.2 : settings.speed)));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms * (settings.reduce_motion ? 0.2 : settings.speed)));
 const announce = (msg) => { $live.textContent = msg; };
 function toast(msg) {
   const el = document.createElement("div"); el.className = "toast"; el.role = "status"; el.textContent = msg;
@@ -443,6 +452,7 @@ function home() {
           <label><input type="radio" name="signals" value="1" ${settings.signals !== false ? "checked" : ""}> 👀 Con señas</label>
           <label><input type="radio" name="signals" value="0" ${settings.signals === false ? "checked" : ""}> 🙈 Sin señas</label>
         </div></fieldset>
+        <fieldset class="seg-field"><legend>Rapidez de la partida</legend>${speedSeg("speed-new")}</fieldset>
         <details class="more"><summary>Más opciones</summary>
           <div class="form-grid">
             <label class="field">Partida a<select name="target"><option value="40">40 tantos</option><option value="30">30 tantos</option><option value="20">20 tantos (corta)</option></select></label>
@@ -468,6 +478,7 @@ function home() {
     </section>
   </div>`));
   document.querySelectorAll('input[name="signals"]').forEach((r) => (r.onchange = () => { settings.signals = r.value === "1"; saveSettings(); }));
+  bindSpeed("speed-new");
   document.getElementById("quick").onclick = () => startGame({ mode: "rapida", rivals: "medio", partner: "sencillo" });
   document.getElementById("home-guest")?.addEventListener("click", playAsGuest);
   const syncPlayers = () => {
@@ -607,7 +618,7 @@ function speakWithBubble(text, seat, minMs = 900) {
       const v = voiceFor(seat);
       if (v) u.voice = v;
       const tone = VOICE_TONE[seat % 4];
-      u.lang = v?.lang || "es-ES"; u.pitch = tone.pitch; u.rate = Math.min(1.5, tone.rate / Math.max(0.6, settings.speed));
+      u.lang = v?.lang || "es-ES"; u.pitch = tone.pitch; u.rate = Math.min(1.5, tone.rate / Math.max(0.6, Math.min(1.2, settings.speed)));
       u.onstart = () => { started = true; show(); };
       u.onend = finish; u.onerror = finish;
       speechSynthesis.speak(u);
@@ -672,6 +683,52 @@ function pileHTML(obs, seat) {
   const label = five ? `${n} × 5 tantos` : `${n} suelta${n === 1 ? "" : "s"}`;
   return `<div class="pile" role="img" aria-label="${five ? `Piedras de 5 tantos: ${n} (${n * 5} tantos)` : `Piedras sueltas: ${n}`}" data-counter="${seat === counter}">
     <span class="stones-row">${stones}${ghosts}</span><small>${label}</small></div>`;
+}
+
+// Resumen de la jugada al terminarla: un solo texto con cada lance (tantos y por qué), qué hizo
+// cada bot, con qué método y qué agentes consultó. Se ve 6 segundos; con ⏸ se para el tiempo.
+const REVIEW_MS = 6000;
+function startReviewTimer() {
+  clearInterval(current.reviewTimer);
+  Object.assign(current.review, { left: REVIEW_MS, paused: false });
+  current.reviewTimer = setInterval(() => {
+    const r = current?.review;
+    if (!r || r.done || !current.obs?.awaiting_deal) { clearInterval(current?.reviewTimer); return; }
+    if (r.paused) return;
+    r.left -= 200;
+    if (r.left <= 0) { r.done = true; clearInterval(current.reviewTimer); renderGame(); return; }
+    updateReviewClock();
+  }, 200);
+}
+function updateReviewClock() {
+  const r = current?.review; if (!r) return;
+  const clock = document.getElementById("rev-clock");
+  if (clock) clock.textContent = r.paused ? "En pausa" : `${Math.ceil(r.left / 1000)} s`;
+  const bar = document.getElementById("rev-bar");
+  if (bar) bar.style.width = `${Math.max(0, (r.left / REVIEW_MS) * 100)}%`;
+  document.getElementById("rev-pause")?.toggleAttribute("disabled", !!r.paused);
+  document.getElementById("rev-play")?.toggleAttribute("disabled", !r.paused);
+}
+function reviewTextHTML(review, obs, names) {
+  const reasons = review.reasons || [];
+  const botLine = (r) => `<li><strong>${esc(names[r.seat])}</strong>: ${esc(r.action)} — ${esc(r.reason)}
+    <br><small class="muted">Método: ${esc(r.metodo || "—")}${r.agentes?.length ? ` · Agentes: ${esc(r.agentes.join(", "))}` : ""}</small></li>`;
+  const forLance = (l) => { const rs = reasons.filter((r) => r.lance === l); return rs.length ? `<ul class="rev-bots">${rs.map(botLine).join("")}</ul>` : ""; };
+  const mus = forLance("mus");
+  const parts = review.steps.slice(1).map((st) => {
+    const lance = Object.keys(LANCE).find((k) => LANCE[k] === st.title);
+    const pts = st.points?.length ? ` <em>${esc(st.points.join(" · "))}</em>` : st.last ? "" : ' <span class="muted">Sin tantos.</span>';
+    return `<p><strong>${esc(st.title)}:</strong> ${esc(st.text)}${pts}</p>${lance ? forLance(lance) : ""}`;
+  }).join("");
+  return `<div class="review review-text" role="region" aria-label="Resumen de la jugada ${review.round}">
+    <small>Resumen de la jugada ${review.round}</small>
+    <div class="rev-scroll">${mus ? `<p><strong>Mus:</strong></p>${mus}` : ""}${parts}</div>
+    <div class="rev-progress" aria-hidden="true"><span id="rev-bar" style="width:${Math.max(0, ((review.left ?? REVIEW_MS) / REVIEW_MS) * 100)}%"></span></div>
+    <div class="row rev-controls">
+      <button class="btn small-btn" id="rev-pause" ${review.paused ? "disabled" : ""}>⏸ Pausa</button>
+      <button class="btn small-btn" id="rev-play" ${review.paused ? "" : "disabled"}>▶ Play</button>
+      <span id="rev-clock" class="muted" aria-live="polite">${review.paused ? "En pausa" : `${Math.ceil((review.left ?? REVIEW_MS) / 1000)} s`}</span>
+    </div></div>`;
 }
 
 // Conteo de la jugada, paso a paso, en el centro de la mesa.
@@ -777,9 +834,10 @@ function renderGame(bubbles = current?.bubbles || {}) {
   const humanTeam = (t) => obs.seats.filter((s) => s.team === t).every((s) => s.kind === "human");
   const teamLabel = (t) => (t === myTeam ? "Tu pareja" : humanTeam(t) ? "Pareja rival" : "Pareja bots");
   // Conteo paso a paso antes de repartir la jugada siguiente
-  if (!current.quick && obs.awaiting_deal && obs.round > 1 && (!current.review || current.review.round !== obs.round - 1)) {
+  if (obs.awaiting_deal && obs.round > 1 && (!current.review || current.review.round !== obs.round - 1)) {
     const r = buildReview(obs, obs.round - 1);
-    current.review = r ? { ...r, step: 0 } : { round: obs.round - 1, steps: [], step: 0, done: true };
+    current.review = r ? { ...r, step: 0, reasons: obs.round_reasons || [] } : { round: obs.round - 1, steps: [], step: 0, done: true };
+    if (r) startReviewTimer();
   }
   const review = obs.awaiting_deal && current.review && !current.review.done && current.review.steps.length ? current.review : null;
   const step = review ? review.steps[review.step] : null;
@@ -828,12 +886,7 @@ function renderGame(bubbles = current?.bubbles || {}) {
     ${'<span class="back"></span>'.repeat(4)}<small>Reparte ${esc(names[obs.dealer])}</small></div>`;
   let center;
   if (review) {
-    center = `<div class="review" role="region" aria-label="Conteo de la jugada ${review.round}">
-      <small>Conteo de la jugada ${review.round} · ${review.step + 1}/${review.steps.length}</small>
-      <div class="lance-title">${esc(step.title)}</div><p>${esc(step.text)}</p>
-      ${step.points?.length ? `<ul>${step.points.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : step.last ? "" : '<p class="muted">Sin tantos en este lance.</p>'}
-      <div class="row">${review.step > 0 ? '<button class="btn small-btn" id="rev-prev">◀ Anterior</button>' : ""}
-        ${step.last ? `<button class="btn primary" id="deal-btn">${obs.dealer === me ? "Repartir" : "¿Repartimos? Sí"}</button>` : '<button class="btn primary" id="rev-next">Siguiente ▶</button>'}</div></div>`;
+    center = reviewTextHTML(review, obs, names);
   } else if (obs.awaiting_deal) {
     center = `<div><div class="lance-title">Reparto</div><p>${obs.dealer === me ? "Te toca repartir." : `Reparte ${esc(names[obs.dealer])}; la baraja está a su derecha.`} Es mano ${esc(names[obs.mano])}.</p>
       <button class="btn primary" id="deal-btn">${obs.dealer === me ? "Repartir" : "¿Repartimos? Sí"}</button></div>`;
@@ -905,8 +958,9 @@ function renderGame(bubbles = current?.bubbles || {}) {
     <div class="row game-tools">
       <button class="btn ghost" id="help-btn" aria-expanded="${current.help}">? ¿Qué puedo hacer?</button>
       <button class="btn ghost" id="calc-btn">🧮 Ver el cálculo</button>
-      ${finished && !current.quick ? '<button class="btn primary" id="summary-btn">Ver resumen</button>' : ""}
+      ${finished ? '<button class="btn primary" id="summary-btn">Ver resumen</button>' : ""}
       <button class="btn ghost" id="log-btn">Historial de la jugada</button>
+      ${finished ? "" : `<fieldset class="speed-field"><legend>Rapidez</legend>${speedSeg("speed-game")}</fieldset>`}
       ${finished ? "" : '<button class="btn ghost" id="mic-btn" title="Di tu jugada en voz alta">🎤 Jugar hablando</button>'}
     </div>
     <div id="help" class="help-panel" ${current.help ? "" : "hidden"}></div>
@@ -917,8 +971,8 @@ function renderGame(bubbles = current?.bubbles || {}) {
   document.querySelectorAll("[data-msg]").forEach((b) => (b.onclick = () => sayToTable(QUICK_MSGS[Number(b.dataset.msg)])));
   renderActions();
   document.getElementById("deal-btn")?.addEventListener("click", () => { if (current.review) current.review.done = true; dealCards(); });
-  document.getElementById("rev-next")?.addEventListener("click", () => { current.review.step += 1; renderGame(); });
-  document.getElementById("rev-prev")?.addEventListener("click", () => { current.review.step -= 1; renderGame(); });
+  document.getElementById("rev-pause")?.addEventListener("click", () => { current.review.paused = true; updateReviewClock(); });
+  document.getElementById("rev-play")?.addEventListener("click", () => { current.review.paused = false; updateReviewClock(); });
   document.getElementById("handoff-btn")?.addEventListener("click", () => switchViewer(handoff));
   document.querySelectorAll("[data-look]").forEach((b) => (b.onclick = () => lookAt(Number(b.dataset.look))));
   document.querySelectorAll("[data-signal]").forEach((b) => (b.onclick = () => makeSignal(b.dataset.signal)));
@@ -926,7 +980,8 @@ function renderGame(bubbles = current?.bubbles || {}) {
   document.getElementById("help-btn").onclick = () => { current.help = !current.help; renderGame(); };
   document.getElementById("calc-btn").onclick = showCalculo;
   document.getElementById("log-btn").onclick = () => showLog();
-  if (finished && !current.quick) document.getElementById("summary-btn").onclick = () => showSummary();
+  bindSpeed("speed-game");
+  if (finished) document.getElementById("summary-btn").onclick = () => showSummary();
   if (current.help) loadHelp();
   document.querySelectorAll("#my-hand button.card").forEach((b) => (b.onclick = () => {
     const code = b.dataset.card;
@@ -980,7 +1035,8 @@ function renderActions() {
     b.onclick = () => send({ type: kind, amount: current.amount });
     $a.append(wrap, b);
   }
-  if (specs.accept) add("QUIERO", "quiero", { type: "accept" }, "Q");
+  const vsOrdago = current.obs.current_bet?.is_ordago;
+  if (specs.accept) add(vsOrdago ? "QUIERO (SE JUEGA LA PARTIDA)" : "QUIERO", "quiero", { type: "accept" }, "Q");
   if (specs.accept_no_lose) add("QUIERO Y NO PIERDO", "quiero", { type: "accept_no_lose" });
   if (specs.reject) add("NO QUIERO", "noquiero", { type: "reject" }, "N");
   if (specs.ordago) add("ÓRDAGO", "ordago", { type: "ordago" }, "O");
@@ -1027,10 +1083,9 @@ async function animateTo(obs) {
     current.bubbles = current.bubbles || {};
     for (const e of fresh) {
       const bubble = BUBBLE[e.kind];
-      if (SOUND_OF[e.kind] && !current.quick) play(SOUND_OF[e.kind]);
+      if (SOUND_OF[e.kind]) play(SOUND_OF[e.kind]);
       const text = eventText(e, names);
       if (text) announce(text);
-      if (current.quick) continue;
       if (e.kind === "LanceStarted" || e.kind === "DealerAssigned") current.bubbles = {};
       const human = obs.seats[e.actor]?.kind === "human";
       const declared = e.kind === "PairsDeclared" || e.kind === "GameDeclared";
@@ -1054,6 +1109,14 @@ async function animateTo(obs) {
         // Un personaje que lleva la 31 lo celebra.
         const proud = obs.seats.find((s) => s.kind === "bot" && frase(s.avatar, "revela_31") && handPoints(e.payload.hands[String(s.seat)] || []) === 31);
         if (proud) await speakWithBubble(frase(proud.avatar, "revela_31", e.seq), proud.seat, 1200);
+      } else if (e.kind === "LanceResolved" && e.payload.ordago) {
+        // El órdago querido decide la partida (reglamento FEM): se explica en la mesa.
+        const w = e.payload.winner_seat;
+        const msg = `¡Órdago a ${LANCE[e.payload.lance]} querido! Lo gana ${names[w]}: ${w % 2 === obs.team ? "tu pareja" : "la pareja rival"} se lleva la partida entera`;
+        setStatus(msg);
+        announce(msg);
+        toast(msg);
+        await sleep(2600);
       } else if (e.kind === "SignalSeen" || (e.kind === "SignalMade" && e.actor !== obs.seat)) {
         // La seña se ve en su cara: el gesto oficial durante unos segundos.
         const from = e.payload.seat;
@@ -1084,7 +1147,7 @@ async function animateTo(obs) {
     current.obs = obs;
     checkHandoff();
     renderGame();
-    if (obs.finished) { store.set("musst.current", null); setTimeout(current.quick ? showQuickSummary : showSummary, 600); syncFinishedGame(obs.game_id); reportChampMatch(obs); }
+    if (obs.finished) { store.set("musst.current", null); setTimeout(showSummary, 2200 * settings.speed); syncFinishedGame(obs.game_id); reportChampMatch(obs); }
   } finally {
     current.animating = false;
   }
@@ -1135,7 +1198,7 @@ async function dealCards() {
 async function animateDeal(obs) {
   const table = document.querySelector(".table");
   const deck = document.querySelector(".deck");
-  if (!table || !deck || settings.reduce_motion || current?.quick) return;
+  if (!table || !deck || settings.reduce_motion) return;
   const me = obs.seat;
   const from = deck.getBoundingClientRect();
   const origin = table.getBoundingClientRect();
@@ -1272,6 +1335,49 @@ function showLog() {
     <div class="row" style="margin-top:12px"><button class="btn" data-close>Cerrar</button></div>`);
 }
 
+// Resumen final, todo en un mismo cuadro: resultado, cómo terminó, momentos clave, tu partida
+// y qué ha decidido cada bot y por qué (solo al terminar: antes delataría sus cartas).
+const LANCE_DE = { grande: "a grande", chica: "a chica", pares: "a pares", juego: "a juego", punto: "al punto", mus: "en el mus" };
+const momentoEs = (d, mine) => String(d).replace(/gana la pareja (\d)/, (_, t) => (Number(t) === mine ? "gana tu pareja" : "gana la pareja rival")).replace("(points)", "(por tantos)").replace("(ordago)", "(por órdago)");
+function endingHTML(a, obs) {
+  const hist = a.history || [];
+  const rounds = hist.reduce((m, e) => Math.max(m, e.round || 0), 0);
+  const names = obs.seats.map((x) => x.name);
+  const team = (t) => (t === a.result.my_team ? "tu pareja" : "la pareja rival");
+  let how;
+  if (a.result.reason === "ordago") {
+    const res = hist.filter((e) => e.kind === "LanceResolved" && e.payload.ordago).pop();
+    const dec = hist.filter((e) => e.kind === "OrdagoDeclared").pop();
+    const acc = hist.filter((e) => e.kind === "OrdagoAccepted").pop();
+    const me = (seat) => seat === obs.seat;
+    const who = (seat, yo, otro) => (me(seat) ? yo : `${esc(names[seat])} ${otro}`);
+    how = res ? `En la jugada ${res.round}, ${dec ? who(dec.actor, "tú echaste", "echó") : "alguien echó"} un órdago ${LANCE_DE[res.payload.lance] || ""} y ${acc ? who(acc.actor, "tú lo quisiste", "lo quiso") : "el rival lo quiso"}. Se enseñaron las cartas: ${me(res.payload.winner_seat) ? "ganaste tú" : `ganó ${esc(names[res.payload.winner_seat])}`}, así que ${team(res.payload.winner_seat % 2)} se llevó la partida entera. <small class="muted">(Reglamento: un órdago querido decide la partida en el acto, vaya como vaya el marcador.)</small>`
+      : "La partida terminó con un órdago querido.";
+  } else {
+    how = `${team(a.result.winner) === "tu pareja" ? "Tu pareja" : "La pareja rival"} llegó a ${obs.target} tantos en la jugada ${rounds}.`;
+  }
+  const review = buildReview({ ...obs, history: hist }, rounds);
+  const steps = review ? review.steps.slice(1).map((st) => `<li><strong>${esc(st.title)}:</strong> ${esc(st.text)}${st.points?.length ? ` <em>${esc(st.points.join(" · "))}</em>` : ""}</li>`).join("") : "";
+  return `<p>${how}</p><p class="muted">${rounds} jugada${rounds === 1 ? "" : "s"} · marcador final ${a.result.score[a.result.my_team]} – ${a.result.score[1 - a.result.my_team]}</p>
+    ${steps ? `<details><summary>Última jugada, lance a lance</summary><ul>${steps}</ul></details>` : ""}`;
+}
+function botReasonsHTML(a, obs) {
+  const reasons = a.bot_reasons || [];
+  const bots = obs.seats.filter((x) => x.kind === "bot");
+  if (!bots.length || !reasons.length) return "";
+  const fmt = (r) => `<li><span class="muted">Jugada ${r.round} · ${esc(r.lance === "mus" ? "Mus" : LANCE[r.lance] || r.lance)}:</span> <strong>${esc(r.action)}</strong> — ${esc(r.reason)}</li>`;
+  return bots.map((b) => {
+    const mine = reasons.filter((r) => r.seat === b.seat);
+    if (!mine.length) return "";
+    const key = mine.filter((r) => !["pass", "mus", "cut"].includes(r.type));
+    const rest = mine.length - key.length;
+    const who = b.team === a.result.my_team ? "tu compañero" : "rival";
+    const level = { sencillo: "nivel sencillo: reglas de fuerza de mano", medio: "nivel medio: probabilidades por simulación", profesional: "nivel profesional: probabilidades + lo que sabe de ti" }[b.level] || (b.level ? `nivel ${b.level}` : "");
+    return `<div class="bot-why"><p class="quote"><span class="quote-face">${faceSVG(b.seat, { pos: "bottom", lookPos: "mesa", avatar: b.avatar })}</span><span><strong>${esc(b.name)}</strong> <span class="muted">(${who}${level ? ` · ${esc(level)}` : ""})</span></span></p>
+      <ul>${key.map(fmt).join("") || "<li>No envidó ni respondió a ningún envite: pasó en todo.</li>"}</ul>
+      ${rest ? `<details><summary>Ver también sus ${rest} pasos y decisiones de mus</summary><ul>${mine.filter((r) => ["pass", "mus", "cut"].includes(r.type)).map(fmt).join("")}</ul></details>` : ""}</div>`;
+  }).join("");
+}
 function quickAgentSummary(a) {
   const summary = a.agent_summary || {};
   const agents = Object.entries(summary.by_agent || {}).map(([name, count]) => `${esc(name)} (${count})`);
@@ -1281,40 +1387,27 @@ function quickAgentSummary(a) {
     ${agents.length ? `<p><strong>Agentes consultados:</strong> ${agents.join(" · ")}</p>` : '<p class="muted">No hay registros de agentes para esta partida.</p>'}`;
 }
 
-async function showQuickSummary() {
-  try {
-    const a = await api(`/api/games/${current.id}/analysis`, { token: current.token });
-    const won = a.result.winner === a.result.my_team;
-    openModal(`
-      <h2 id="modal-title">${won ? "Victoria" : "Derrota"} · ${a.result.score[a.result.my_team]} – ${a.result.score[1 - a.result.my_team]}</h2>
-      <h3>Métodos y agentes</h3>
-      ${quickAgentSummary(a)}
-      <h3>Momentos clave</h3>
-      <ul>${a.key_moments.slice(0, 3).map((m) => `<li>Jugada ${m.round_no}: ${esc(m.description)}</li>`).join("") || "<li>Partida rápida finalizada.</li>"}</ul>
-      <p class="muted">Este visor se cerrará automáticamente en 10 segundos.</p>`);
-    setTimeout(() => { if ($modal.open) $modal.close(); }, 10000);
-  } catch (err) {
-    openModal(`<h2 id="modal-title">Partida finalizada</h2><p class="muted">No se pudo cargar el resumen.</p>`);
-    setTimeout(() => { if ($modal.open) $modal.close(); }, 10000);
-  }
-}
-
 async function showSummary() {
   try {
     const a = await api(`/api/games/${current.id}/analysis`, { token: current.token });
+    const obs = current.obs;
     const won = a.result.winner === a.result.my_team;
     const s = a.stats;
     openModal(`
       <h2 id="modal-title">${won ? "Victoria" : "Derrota"} · ${a.result.reason === "ordago" ? "por órdago" : `${a.result.score[a.result.my_team]} – ${a.result.score[1 - a.result.my_team]}`}</h2>
-      ${(current.obs.seats || []).filter((x) => x.kind === "bot" && PERSONAJES[x.avatar]).map((x) => {
+      <div class="summary-box">
+      <h3>Cómo terminó</h3>
+      ${endingHTML(a, obs)}
+      ${(obs.seats || []).filter((x) => x.kind === "bot" && PERSONAJES[x.avatar]).map((x) => {
         const theyWon = (x.seat % 2) === a.result.winner;
         const q = frase(x.avatar, theyWon ? "gana_partida" : "pierde_partida", a.result.score[0] + a.result.score[1]);
         return q ? `<p class="quote"><span class="quote-face">${faceSVG(x.seat, { pos: "bottom", lookPos: "mesa", avatar: x.avatar })}</span><strong>${esc(x.name)}:</strong> «${esc(q)}»</p>` : "";
       }).join("")}
-      <h3>Métodos y agentes</h3>
+      ${(a.bot_reasons || []).length ? `<h3>Qué decidieron los bots y por qué</h3><p class="muted">Cada bot explica sus envites, sus «quiero» / «no quiero» y sus órdagos con lo que calculó en ese momento (sin ver tus cartas).</p>${botReasonsHTML(a, obs)}` : ""}
+      <h3>Métodos y agentes de los bots</h3>
       ${quickAgentSummary(a)}
       <h3>Momentos clave</h3>
-      <ul>${a.key_moments.map((m) => `<li>Jugada ${m.round_no}: ${esc(m.description)}</li>`).join("") || "<li>Partida tranquila.</li>"}</ul>
+      <ul>${a.key_moments.map((m) => `<li>Jugada ${m.round_no}: ${esc(momentoEs(m.description, a.result.my_team))}</li>`).join("") || "<li>Partida tranquila.</li>"}</ul>
       <h3>Tu partida</h3>
       <div class="table-wrap"><table class="data"><tbody>
         <tr><td>Envites</td><td>${s.envites}</td></tr><tr><td>Órdagos</td><td>${s.ordagos}</td></tr>
@@ -1324,6 +1417,7 @@ async function showSummary() {
       </tbody></table></div>
       ${(a.counterfactuals || []).length ? `<h3>¿Y si hubieras elegido lo contrario?</h3><ul>${a.counterfactuals.map((c) => `<li>Jugada ${c.jugada}, ${esc(c.lance)} ${c.ordago ? "(órdago)" : `(envite de ${c.envite})`}: elegiste <strong>${c.elegiste}</strong> → ${fmtOutcome(c, c.tantos)}; lo contrario → ${fmtOutcome(c, c.alternativa)}. ${c.acierto ? "✓ Buena decisión" : "✗ Lo contrario era mejor"}</li>`).join("")}</ul><p class="muted">Calculado con las manos ya reveladas, solo al terminar la partida.</p>` : ""}
       ${a.learning.length ? `<h3>Aprendizaje del bot</h3><ul>${a.learning.map((l) => `<li>${esc(l)}</li>`).join("")}</ul>` : ""}
+      </div>
       <div class="row" style="margin-top:12px">
         <button class="btn primary" id="again">Otra partida</button>
         ${user ? "" : '<button class="btn" id="guest-signup">Crear cuenta para guardar mis partidas</button>'}
@@ -1571,7 +1665,7 @@ function settingsView() {
     <form id="sf" class="form-grid">
       <label class="field">Tema<select name="theme">${opt("theme", [["auto", "Automático"], ["light", "Claro"], ["dark", "Oscuro"]], settings.theme)}</select></label>
       <label class="field">Tamaño de texto<select name="text_size">${opt("t", [[0.9, "Pequeño"], [1, "Normal"], [1.15, "Grande"], [1.3, "Muy grande"]], settings.text_size)}</select></label>
-      <label class="field">Velocidad de animaciones<select name="speed">${opt("s", [[0.5, "Rápida"], [1, "Normal"], [1.6, "Lenta"]], settings.speed)}</select></label>
+      <label class="field">Rapidez de la partida<select name="speed">${opt("s", [[2.2, "Lento"], [1.5, "Medio"], [0.8, "Rápido"]], settings.speed)}</select></label>
       <label class="field">Mesa<select name="table">${opt("m", [["verde", "Tapete verde"], ["granate", "Granate"], ["azul", "Azul"]], settings.table)}</select></label>
       <label class="field">Reverso de cartas<select name="card_back">${opt("b", [["rayas", "Clásico"], ["liso", "Liso"], ["escudo", "Escudo"]], settings.card_back)}</select></label>
       <label class="field"><span><input type="checkbox" name="reduce_motion" ${settings.reduce_motion ? "checked" : ""}> Reducir animaciones</span></label>

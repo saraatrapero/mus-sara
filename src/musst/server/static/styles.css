@@ -116,7 +116,12 @@ p { margin: 0 0 1em; }
 }
 .btn:hover { filter: brightness(.97); }
 .btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.btn { color: var(--fg); }
 .btn.ghost { background: none; }
+/* En las ventanas (Entrar, Cancelar, Cerrar…) el botón secundario lleva fondo y texto propios:
+   nunca hereda un color que lo deje blanco sobre blanco. */
+dialog .btn:not(.primary) { background: var(--surface-2); color: var(--fg); border-color: var(--line); }
+dialog .btn.ghost { background: var(--surface-2); border: 1px solid var(--fg); color: var(--fg); }
 .btn[disabled] { opacity: .5; cursor: not-allowed; }
 .form-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
 label.field { display: grid; gap: 4px; font-weight: 500; font-size: .92rem; }
@@ -651,3 +656,30 @@ body.playing .deck-left { bottom: auto; top: 54%; left: 22%; }
 .guest-choice { display: grid; gap: 6px; justify-items: start; padding: 14px; border-radius: 14px;
   border: 2px solid var(--gold); background: color-mix(in srgb, var(--gold) 8%, transparent); }
 .linklike { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; font: inherit; }
+
+/* Resumen final: un solo cuadro con scroll, también en el móvil */
+.summary-box { max-height: min(70vh, 640px); overflow-y: auto; padding-right: 4px; }
+.summary-box h3 { margin-top: 14px; }
+.bot-why { border-top: 1px solid var(--line, rgba(0,0,0,.12)); padding-top: 6px; margin-top: 6px; }
+.bot-why ul { margin: 4px 0 6px; padding-left: 18px; }
+.bot-why li { margin: 3px 0; line-height: 1.35; }
+
+/* Selector de rapidez en la mesa */
+.speed-field { border: 0; padding: 0; margin: 0; display: inline-flex; align-items: center; gap: 6px; }
+.speed-field legend { float: left; font-size: .9em; color: var(--muted, #666); margin-right: 6px; }
+.speed-seg label { font-size: .9em; }
+
+/* Resumen de cada jugada en la mesa (6 s, con pausa) */
+.review-text { max-width: 560px; width: 100%; justify-items: stretch; text-align: left; }
+.review-text > small { justify-self: center; }
+.rev-scroll { max-height: min(240px, 38vh); overflow-y: auto; font-size: .92em; line-height: 1.35; padding-right: 4px; }
+.rev-scroll p { margin: 6px 0 2px; }
+.rev-bots { margin: 0 0 4px; padding-left: 18px; }
+.rev-bots li { margin: 2px 0; }
+.rev-progress { height: 4px; background: rgba(255,255,255,.2); border-radius: 2px; overflow: hidden; }
+.rev-progress span { display: block; height: 100%; background: var(--gold, #d4a017); transition: width .2s linear; }
+.rev-controls { justify-content: center; align-items: center; gap: 8px; }
+.review-text .muted, .review-text small { color: rgb(255 255 255 / .78); }
+.review-text .rev-bots small { font-size: .82em; }
+.rev-controls .btn[disabled] { opacity: .45; }
+.rev-controls .btn { background: #f3ead7; color: #1f2a24; border-color: #f3ead7; font-weight: 700; }

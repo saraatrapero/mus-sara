@@ -19,7 +19,7 @@ from musst.bots.api import (
     RaiseAction,
     RejectAction,
 )
-from musst.bots.toolkit import hand_strength, keep_heuristic_discard
+from musst.bots.toolkit import early_game, hand_strength, keep_heuristic_discard
 from musst.engine import evaluation as ev
 
 
@@ -56,6 +56,7 @@ class SimpleBot(Bot):
         self.rng = random.Random(seed)
         self.noise = noise
         self.bluff = bluff
+        self.last_reason: dict[str, object] = {}
 
     def signal(self, observation: Observation) -> str | None:
         """Descuidado: hace una seña en cuanto alguien le mira, sea su compañero o un rival."""
@@ -82,6 +83,7 @@ class SimpleBot(Bot):
 
     def _mus(self, obs: Observation) -> Action:
         if "mus" not in obs.legal_types():
+            self.last_reason = {"regla": "ya no se puede pedir mus"}
             return CutMusAction()
         hand = obs.hand
         good = (
@@ -89,15 +91,27 @@ class SimpleBot(Bot):
             or ev.pairs(hand).kind >= ev.PairsKind.MEDIAS
             or (hand_strength(hand, "grande") >= 0.65 and ev.pairs(hand).has_pairs)
         )
+        self.last_reason = {
+            "regla": "corta el mus: tiene 31, medias/duples o grande alta con pares"
+            if good
+            else "pide mus: su mano no es buena y prefiere cambiar cartas"
+        }
         return CutMusAction() if good else MusAction()
 
     def _open(self, obs: Observation, s: float) -> Action:
-        if s >= 0.97 and self.rng.random() < 0.3:
+        self.last_reason = {"fuerza": s}
+        if s >= 0.97 and self.rng.random() < 0.3 and not early_game(obs):
+            self.last_reason["regla"] = "con 97/100 o más se arriesga a la partida entera"
             return OrdagoAction()
         if s >= 0.75:
+            self.last_reason["regla"] = (
+                "con 75/100 o más envida 2" if s < 0.9 else "con 90/100 o más envida 4"
+            )
             return BetAction(2 if s < 0.9 else 4)
         if self.rng.random() < self.bluff:
+            self.last_reason["regla"] = "va de farol: envida con mano floja a ver si cuela"
             return BetAction(2)
+        self.last_reason["regla"] = "por debajo de 75/100 no envida y pasa"
         return PassAction()
 
     def _respond(self, obs: Observation, s: float) -> Action:
@@ -105,10 +119,22 @@ class SimpleBot(Bot):
         assert bet is not None
         types = obs.legal_types()
         accept: Action = AcceptAction() if "accept" in types else AcceptNoLoseAction()
+        self.last_reason = {"fuerza": s}
         if bet.is_ordago:
-            return accept if s >= 0.85 and accept.type in types else RejectAction()
+            need = 0.95 if early_game(obs) else 0.85
+            if s >= need and accept.type in types:
+                self.last_reason["regla"] = f"ve el órdago porque supera {round(need * 100)}/100"
+                return accept
+            self.last_reason["regla"] = (
+                f"no se juega la partida sin al menos {round(need * 100)}/100"
+                + (" (y es pronto en la partida)" if early_game(obs) else "")
+            )
+            return RejectAction()
         if s >= 0.9 and "raise" in types:
+            self.last_reason["regla"] = "con 90/100 o más sube el envite"
             return RaiseAction(2)
         if s >= 0.55 and accept.type in types:
+            self.last_reason["regla"] = "con 55/100 o más quiere el envite"
             return accept
+        self.last_reason["regla"] = "por debajo de 55/100 no quiere el envite"
         return RejectAction()
