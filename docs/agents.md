@@ -1,6 +1,6 @@
 # Agentes de IA
 
-Diseño completo: [design/06-agentes.md](design/06-agentes.md). Código: `src/musst/agents/`.
+Código: `src/musst/agents/`.
 
 ## Niveles
 
@@ -8,7 +8,7 @@ Diseño completo: [design/06-agentes.md](design/06-agentes.md). Código: `src/mu
 |---|---|---|
 | Sencillo | `SimpleBot` | Heurísticas de fuerza de mano por lance; ruido del 15 % y faroles ocasionales (errores razonables) |
 | Medio | `AgentBot("medio")` | Agentes de cartas, probabilidad (Monte Carlo, 90 muestras) y marcador |
-| Profesional | `AgentBot("profesional")` | Todos los agentes + PlayerModel con memoria + farol + pareja (300-800 muestras) |
+| Experto (alias `profesional`) | `AgentBot("profesional")` / `ProBot` | Todos los agentes + PlayerModel con memoria + farol + pareja (300-800 muestras) |
 | Matemático | `AgentBot("matematico")` / `MathBot` | Agentes bayesiano, analista, evaluador y juez matemático: Monte Carlo sin sesgo + Bayes + valor esperado de P(ganar la partida). Ver [Motor probabilístico](probabilidad.md) |
 
 ### Qué hace cada nivel (diferencias claras)
@@ -88,8 +88,11 @@ bot.last_decision.explanation()
 #  'narrative': 'EV(BET_2)=+1.42; EV(PASS)=+0.71; EV(BET_4)=+1.10'}
 ```
 
-En el servidor, las explicaciones se guardan por partida y solo se ven en el modo desarrollo
-(`MUSST_DEV_MODE=1`, ruta `/api/dev/games/{id}`). Nunca se envían al jugador durante la partida.
+En el servidor, las explicaciones se guardan por partida. Durante la partida, al terminar cada
+jugada, el jugador recibe el motivo de cada bot en esa jugada (`round_reasons`), cuando ya se
+han enseñado las cartas, así que no delata nada de la jugada en curso. Al acabar la partida,
+`/api/games/{id}/analysis` devuelve todas las decisiones (antes responde 403). El detalle
+interno completo está en el modo desarrollo (`MUSST_DEV_MODE=1`, ruta `/api/dev/games/{id}`).
 
 ## Personajes de la mesa
 
