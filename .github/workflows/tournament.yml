@@ -14,7 +14,7 @@ on:
     inputs:
       partidas:
         description: Repartos por cruce (cada uno se juega dos veces)
-        default: "6"
+        default: "12"
 
 permissions:
   contents: read
@@ -41,7 +41,7 @@ jobs:
           SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
       - name: Jugar el torneo
         env:
-          PARTIDAS: ${{ github.event.inputs.partidas || '6' }}
+          PARTIDAS: ${{ github.event.inputs.partidas || '12' }}
         run: >
           mus-torneo -n "$PARTIDAS" --seed 2026
           --out site/scoreboard --markdown docs/clasificacion.md

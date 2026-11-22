@@ -1436,7 +1436,7 @@ async function showSummary() {
       <div class="summary-box">
       <h3>Resultado</h3>
       ${endingHTML(a, obs)}
-      <p><strong>Marcador final:</strong> ${a.result.score[a.result.my_team]} – ${a.result.score[1 - a.result.my_team]} · ${s.envites} envites · ${s.ordagos} órdagos.</p>
+      <p><strong>Marcador final:</strong> ${a.result.score[a.result.my_team]} – ${a.result.score[1 - a.result.my_team]} · tus jugadas: ${s.envites} envites y ${s.ordagos} órdagos.</p>
       <h3>Momentos clave</h3>
       <ul>${a.key_moments.slice(0, 3).map((m) => `<li>Jugada ${m.round_no}: ${esc(momentoEs(m.description, a.result.my_team))}</li>`).join("") || "<li>Partida tranquila.</li>"}</ul>
       <p class="muted"><strong>Decisiones:</strong> ${Number((a.agent_summary || {}).total_decisions || 0)} registradas.</p>
