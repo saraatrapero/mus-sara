@@ -892,6 +892,12 @@ function renderGame(bubbles = current?.bubbles || {}) {
   let center;
   if (review) {
     center = reviewTextHTML(review, obs, names);
+  } else if (current.roundSummary && !obs.finished) {
+    const summary = current.roundSummary;
+    const winnerText = summary.winner == null ? "Ronda empatada" : summary.winner === myTeam ? "Gana tu pareja" : "Gana la pareja rival";
+    center = `<div class="round-summary" role="status"><div class="lance-title">Resumen de ronda ${summary.round}</div>
+      <strong>${winnerText}</strong><div class="bet-info">Tu pareja ${summary.myPoints} · rivales ${summary.rivalPoints} tantos</div>
+      <div class="bet-info">Marcador ${summary.score[0]} – ${summary.score[1]}</div></div>`;
   } else if (obs.awaiting_deal) {
     const cutter = (obs.dealer - 1 + 4) % 4;
     center = `<div><div class="lance-title">Reparto</div><p><strong>Reparte el postre:</strong> ${esc(names[obs.dealer])}. <strong>Corta a su izquierda:</strong> ${esc(names[cutter])}. Es mano ${esc(names[obs.mano])}.</p>
@@ -1136,17 +1142,22 @@ async function animateTo(obs) {
         setTimeout(() => { delete current.gestures[obs.seat]; }, 1800);
       } else if (e.kind === "RoundFinished" && e.round === prevRound) {
         const lastPts = obs.history.filter((x) => x.round === prevRound && x.kind === "PointsAwarded");
-        const mine = lastPts.filter((x) => x.payload.team === obs.team).reduce((t, x) => t + x.payload.points, 0);
-        const theirs = lastPts.filter((x) => x.payload.team !== obs.team).reduce((t, x) => t + x.payload.points, 0);
-        const bot = obs.seats.find((s) => s.kind === "bot" && s.team !== obs.team) || obs.seats.find((s) => s.kind === "bot");
-        if (bot) {
-          const botWon = bot.team === obs.team ? mine >= theirs : theirs > mine;
-          const pool = botWon ? BANTER_WIN : BANTER_LOSE;
-          const phrase = frase(bot.avatar, botWon ? "gana_lance" : "pierde_lance", e.seq) || pool[e.seq % pool.length];
-          current.bubbles = {};
-          await speakWithBubble(phrase, bot.seat, 1100);
-        }
-        current.bubbles = {};
+        const myPoints = lastPts.filter((x) => x.payload.team === obs.team).reduce((t, x) => t + x.payload.points, 0);
+        const rivalPoints = lastPts.filter((x) => x.payload.team !== obs.team).reduce((t, x) => t + x.payload.points, 0);
+        current.roundSummary = {
+          round: prevRound,
+          winner: myPoints === rivalPoints ? null : (myPoints > rivalPoints ? obs.team : 1 - obs.team),
+          myPoints,
+          rivalPoints,
+          score: e.payload.score || obs.score,
+        };
+        const winnerText = myPoints === rivalPoints
+          ? `Ronda empatada: ${myPoints} tantos por pareja`
+          : `${myPoints > rivalPoints ? "Gana tu pareja" : "Gana la pareja rival"}: +${Math.max(myPoints, rivalPoints)} tantos`;
+        setStatus(`Resumen de ronda ${prevRound}. ${winnerText}. Marcador ${e.payload.score[0]} – ${e.payload.score[1]}.`);
+        announce(`Resumen de ronda ${prevRound}. ${winnerText}. Marcador ${e.payload.score[0]} – ${e.payload.score[1]}.`);
+        renderGame();
+        await sleep(900);
       }
     }
     current.seen = maxSeq(obs);
@@ -1188,6 +1199,7 @@ async function lookAt(seat) {
 // Reparto: se pregunta antes y se ve cómo van saliendo las cartas de la baraja, de una en
 // una y en sentido antihorario empezando por el mano (FEM III.2).
 async function dealCards() {
+  if (current) current.roundSummary = null;
   if (current.busy) return;
   current.busy = true;
   try {
@@ -1984,9 +1996,7 @@ const champDate = (d) => new Date(d).toLocaleString("es-ES", { weekday: "short",
 const myId = () => cloud.cloudProfile()?.id;
 
 function champsUnavailable() {
-  $main.append(h(`<div class="page stack"><h1 class="page-title">Campeonatos</h1><section class="panel stack">
-    <p>Los campeonatos necesitan cuentas compartidas entre dispositivos (Supabase), para que cada persona se apunte desde su móvil u ordenador.</p>
-    <p class="muted">La administración lo activa siguiendo <a href="https://saraatrapero.github.io/mus-sara/docs/deployment/" rel="noopener">Despliegue → Cuentas compartidas</a>.</p></section>
+  $main.append(h(`<div class="page stack"><h1 class="page-title">Campeonatos</h1>
     <section class="panel stack" id="bot-ranking" aria-label="Torneo de bots">Cargando la clasificación de bots…</section></div>`));
   botRanking();
 }
@@ -2023,25 +2033,10 @@ async function botRanking() {
 }
 
 async function champsView() {
-  if (!cloud.cloudEnabled()) return champsUnavailable();
   $main.append(h(`<div class="page stack"><h1 class="page-title">Campeonatos</h1>
-    <p class="muted">Eliminatorias por parejas: cuartos de final, semifinales y final. Apúntate antes de la fecha de comienzo; las plazas que queden libres las ocupan parejas de bots.</p>
-    <div id="champ-list" class="champ-list">Cargando…</div>
+    <p class="muted">Ranking público de todos los bots disponibles. No hace falta iniciar sesión.</p>
     <section class="panel stack" id="bot-ranking" aria-label="Torneo de bots">Cargando la clasificación de bots…</section></div>`));
   botRanking();
-  const el = document.getElementById("champ-list");
-  try {
-    const list = await cloud.championships();
-    if (!list.length) { el.innerHTML = '<p class="muted">Todavía no hay campeonatos. Los organiza la administración.</p>'; return; }
-    el.innerHTML = list.map((c) => {
-      const signed = c.champ_teams.some((t) => t.captain === myId() || t.partner === myId());
-      return `<button class="panel champ-card ${c.status}" data-champ="${c.id}">
-        <strong>${esc(c.name)}</strong><span>${CHAMP_STATUS[c.status]}${c.status === "inscripcion" ? ` · empieza ${champDate(c.starts_at)}` : ""}</span>
-        <small class="muted">${c.champ_teams.length}/${c.size} parejas · a ${c.target} tantos${c.signals ? " · con señas" : ""}</small>
-        ${signed ? '<span class="chip-light">Estás apuntado</span>' : ""}</button>`;
-    }).join("");
-    el.querySelectorAll("[data-champ]").forEach((b) => (b.onclick = () => go("champ", Number(b.dataset.champ))));
-  } catch (err) { el.textContent = err.message; }
 }
 
 async function champView(id) {

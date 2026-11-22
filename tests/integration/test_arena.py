@@ -48,6 +48,15 @@ def test_torneo_sobrevive_a_un_bot_cuya_fabrica_falla():
     assert rota.wins == 0
 
 
+def test_el_experto_aparece_el_primero_en_el_ranking():
+    parts = [
+        Participant("experto", lambda: SimpleBot()),
+        Participant("sencillo", lambda: SimpleBot()),
+    ]
+    result = run_tournament(parts, games_per_pair=1, seed=8)
+    assert result.ranking()[0].name == "experto"
+
+
 def test_torneo_reproducible():
     parts = [Participant("a", lambda: SimpleBot(1)), Participant("b", lambda: RandomBot(2))]
     r1 = run_tournament(parts, games_per_pair=2, seed=5)
