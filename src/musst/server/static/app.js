@@ -404,6 +404,7 @@ function go(name, ...args) {
   document.querySelectorAll(".topnav button").forEach((b) => b.setAttribute("aria-current", b.dataset.nav === name ? "page" : "false"));
   $main.innerHTML = "";
   document.body.classList.toggle("playing", name === "game");
+  if (name === "champs") { (views.champs || champsView)(...args); $main.focus({ preventScroll: true }); window.scrollTo(0, 0); return; }
   // Las cuentas son opcionales para jugar; las vistas privadas necesitan un usuario de verdad
   // (en modo invitado tampoco: esas pantallas leen el perfil).
   if (!user && PRIVATE_VIEWS.has(name)) { loginGate(); return; }
