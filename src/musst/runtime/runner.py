@@ -113,7 +113,7 @@ def play_game(
         )
         try:
             bot.on_game_start(info)
-        except Exception as exc:
+        except _FALLOS_DEL_BOT as exc:
             if _handle_failure(game, match, seats, i, BotFailure("exception", repr(exc)), mode):
                 break
 
@@ -126,10 +126,9 @@ def play_game(
             break
         seat = game.turn
         assert seat is not None
-        obs = build_observation(game, seat)
         start = time.perf_counter()
         try:
-            action = seats[seat].decide(obs)
+            action = seats[seat].decide(build_observation(game, seat))
             elapsed = time.perf_counter() - start
             match.decision_times[seat].append(elapsed)
             if elapsed > time_limit_s:
@@ -138,7 +137,7 @@ def play_game(
                 game.apply(seat, action)
             except IllegalAction as exc:
                 raise BotFailure("illegal", f"{action!r}: {exc}") from exc
-            except Exception as exc:  # acción malformada (tipo incorrecto, etc.)
+            except _FALLOS_DEL_BOT as exc:  # acción malformada (tipo incorrecto, etc.)
                 raise BotFailure("illegal", f"{action!r}: {exc!r}") from exc
             match.actions.append((seat, action))
             for s, sig in offer_signals(game, dict(enumerate(seats))):
@@ -146,7 +145,7 @@ def play_game(
         except BotFailure as failure:
             if _handle_failure(game, match, seats, seat, failure, mode):
                 break
-        except Exception as exc:
+        except _FALLOS_DEL_BOT as exc:
             if _handle_failure(game, match, seats, seat, BotFailure("exception", repr(exc)), mode):
                 break
         if on_event is not None:
@@ -161,9 +160,14 @@ def play_game(
     for bot in seats:
         try:
             bot.on_game_end(end)
-        except Exception as exc:  # el aprendizaje de un bot no puede romper la partida
+        except _FALLOS_DEL_BOT as exc:  # el aprendizaje de un bot no puede romper la partida
             log.warning("on_game_end falló en %s: %r", getattr(bot, "name", "?"), exc)
     return match
+
+
+# Lo que un bot puede lanzar y se le cuenta como fallo suyo. ``SystemExit`` incluido: un
+# ``sys.exit()`` dentro de un bot no puede parar la partida ni el torneo.
+_FALLOS_DEL_BOT = (Exception, SystemExit, GeneratorExit)
 
 
 def offer_signals(game: MusGame, bots: dict[int, Bot]) -> list[tuple[int, str]]:
@@ -182,7 +186,7 @@ def offer_signals(game: MusGame, bots: dict[int, Bot]) -> list[tuple[int, str]]:
             if choice:
                 game.signal(seat, choice)
                 made.append((seat, str(choice)))
-        except Exception as exc:
+        except _FALLOS_DEL_BOT as exc:
             log.warning("Seña ignorada del asiento %s: %r", seat, exc)
     return made
 

@@ -44,7 +44,7 @@ def test_reglas_aprende_de_las_manos_enseñadas():
 
 def test_registro_incluye_bots_algoritmicos_y_experto():
     nombres = {entry.name for entry in all_entries()}
-    assert {"experto", "dijkstra", "greedy", "a_star", "profesional"} <= nombres
+    assert {"experto", "profesional"} <= nombres
     assert get_entry("experto").description.startswith("Bot experto")
 
 

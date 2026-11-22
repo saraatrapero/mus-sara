@@ -84,7 +84,9 @@ th:nth-child(2),td:nth-child(2){{text-align:left}}
 def write_scoreboard(result: TournamentResult, out_dir: str | Path) -> Path:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    (out / "scoreboard.json").write_text(json.dumps(result.to_dict(), indent=2, ensure_ascii=False))
-    (out / "scoreboard.md").write_text(to_markdown(result))
-    (out / "index.html").write_text(to_html(result))
+    (out / "scoreboard.json").write_text(
+        json.dumps(result.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    (out / "scoreboard.md").write_text(to_markdown(result), encoding="utf-8")
+    (out / "index.html").write_text(to_html(result), encoding="utf-8")
     return out

@@ -151,7 +151,9 @@ async function apiCall(path, { method = "GET", body, token } = {}) {
 const fmtOutcome = (c, v) => (c.ordago && Math.abs(v) === c.envite ? (v > 0 ? "ganas la partida" : "pierdes la partida") : `${v > 0 ? "+" : ""}${v} tantos`);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const h = (html) => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content; };
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms * (settings.reduce_motion ? 0.2 : settings.speed)));
+// Partida rápida: sin bocadillos, sin animaciones y sin la revisión de cada jugada.
+const isQuick = () => Boolean(current?.quick || current?.obs?.mode === "rapida");
+const sleep = (ms) => new Promise((r) => setTimeout(r, isQuick() ? 30 : ms * (settings.reduce_motion ? 0.2 : settings.speed)));
 const announce = (msg) => { $live.textContent = msg; };
 function toast(msg) {
   const el = document.createElement("div"); el.className = "toast"; el.role = "status"; el.textContent = msg;
@@ -492,9 +494,16 @@ function home() {
   api("/api/bots").then((bots) => {
     const options = document.getElementById("rival-options");
     if (!options) return;
-    options.innerHTML = bots.filter((bot) => bot.name !== "random" && !bot.alias).map((bot, index) =>
-      `<label><input type="radio" name="rivals" value="${esc(bot.name)}" ${index === 0 ? "checked" : ""}> <strong>${esc(bot.name)}</strong></label>`
-    ).join("");
+    // Nuestros bots de más fácil a más difícil (el servidor ya los da en ese orden) y, aparte,
+    // los que han mandado otros equipos.
+    const elegibles = bots.filter((bot) => bot.name !== "random" && !bot.alias);
+    const radio = (bot) => `<label><input type="radio" name="rivals" value="${esc(bot.name)}" ${bot.name === "medio" ? "checked" : ""}> <strong>${esc(bot.name)}</strong></label>`;
+    // «ejemplo» es el bot del tutorial (no es de otro equipo): no se ofrece como rival.
+    const propios = elegibles.filter((bot) => !bot.external);
+    const externos = elegibles.filter((bot) => bot.external && bot.name !== "ejemplo");
+    const titulo = (txt) => `<p class="muted" style="flex-basis:100%;margin:8px 0 2px">${txt}</p>`;
+    options.innerHTML = titulo("Nuestros bots, de más fácil a más difícil") + propios.map(radio).join("")
+      + (externos.length ? titulo("Bots de otros equipos") + externos.map(radio).join("") : "");
   }).catch(() => {});
   const syncPlayers = () => {
     const mode = document.querySelector('input[name="players"]:checked').value;
@@ -627,6 +636,8 @@ function voiceFor(seat) {
 function voiceOn() { return !(current?.quick || current?.obs?.mode === "rapida") && settings.voice && settings.sound && typeof speechSynthesis !== "undefined"; }
 // Habla y bocadillo van juntos: el bocadillo aparece cuando empieza la voz y se espera a que acabe.
 function speakWithBubble(text, seat, minMs = 900) {
+  // En la partida rápida no hablan los personajes (sí lo que escribe la persona en la mesa).
+  if (isQuick() && !current?.saying) return Promise.resolve();
   const show = () => { current.bubbles = { ...(current.bubbles || {}), [seat]: text }; renderGame(); };
   if (!voiceOn() || !text) { show(); return sleep(minMs); }
   return new Promise((resolve) => {
@@ -854,7 +865,7 @@ function renderGame(bubbles = current?.bubbles || {}) {
   const humanTeam = (t) => obs.seats.filter((s) => s.team === t).every((s) => s.kind === "human");
   const teamLabel = (t) => (t === myTeam ? "Tu pareja" : humanTeam(t) ? "Pareja rival" : "Pareja bots");
   // Conteo paso a paso antes de repartir la jugada siguiente
-  if (obs.awaiting_deal && obs.round > 1 && (!current.review || current.review.round !== obs.round - 1)) {
+  if (!isQuick() && obs.awaiting_deal && obs.round > 1 && (!current.review || current.review.round !== obs.round - 1)) {
     const r = buildReview(obs, obs.round - 1);
     current.review = r ? { ...r, step: 0, reasons: obs.round_reasons || [] } : { round: obs.round - 1, steps: [], step: 0, done: true };
     if (r) startReviewTimer();
@@ -907,12 +918,13 @@ function renderGame(bubbles = current?.bubbles || {}) {
   let center;
   if (review) {
     center = reviewTextHTML(review, obs, names);
-  } else if (current.roundSummary && !obs.finished) {
+  } else if (current.roundSummary && obs.awaiting_deal && !obs.finished) {
     const summary = current.roundSummary;
     const winnerText = summary.winner == null ? "Ronda empatada" : summary.winner === myTeam ? "Gana tu pareja" : "Gana la pareja rival";
     center = `<div class="round-summary" role="status"><div class="lance-title">Resumen de ronda ${summary.round}</div>
       <strong>${winnerText}</strong><div class="bet-info">Tu pareja ${summary.myPoints} · rivales ${summary.rivalPoints} tantos</div>
-      <div class="bet-info">Marcador ${summary.score[0]} – ${summary.score[1]}</div></div>`;
+      <div class="bet-info">Marcador ${summary.score[0]} – ${summary.score[1]}</div>
+      ${obs.awaiting_deal ? `<button class="btn primary" id="deal-btn">${obs.dealer === me ? "Repartir" : "¿Repartimos? Sí"}</button>` : ""}</div>`;
   } else if (obs.awaiting_deal) {
     const cutter = (obs.dealer - 1 + 4) % 4;
     center = `<div><div class="lance-title">Reparto</div><p><strong>Reparte el postre:</strong> ${esc(names[obs.dealer])}. <strong>Corta a su izquierda:</strong> ${esc(names[cutter])}. Es mano ${esc(names[obs.mano])}.</p>
@@ -1083,7 +1095,7 @@ async function send(action) {
   current.busy = true;
   try {
     const mine = myPhrase(action);
-    if (mine) await speakWithBubble(mine, current.obs.seat, 500);
+    if (mine && !isQuick()) await speakWithBubble(mine, current.obs.seat, 500);
     const obs = await api(`/api/games/${current.id}/action`, { method: "POST", body: { action }, token: current.token });
     await animateTo(obs);
   } catch (err) {
@@ -1110,7 +1122,7 @@ async function animateTo(obs) {
     current.bubbles = current.bubbles || {};
     for (const e of fresh) {
       const bubble = BUBBLE[e.kind];
-      if (SOUND_OF[e.kind]) play(SOUND_OF[e.kind]);
+      if (SOUND_OF[e.kind] && !isQuick()) play(SOUND_OF[e.kind]);
       const text = eventText(e, names);
       if (text) announce(text);
       if (e.kind === "LanceStarted" || e.kind === "DealerAssigned") current.bubbles = {};
@@ -1123,7 +1135,7 @@ async function animateTo(obs) {
         setStatus(`Se juega a ${LANCE[e.payload.lance]}`);
         renderGame();
         await sleep(700);
-      } else if (bubble && e.round === prevRound && (e.actor !== obs.seat || declared)) {
+      } else if (bubble && !isQuick() && e.round === prevRound && (e.actor !== obs.seat || declared)) {
         // Lo que dice cada jugador se queda en su bocadillo hasta el siguiente lance.
         const phrase = human && !declared ? myPhrase({ type: { BetPlaced: "bet", BetRaised: "raise", OrdagoDeclared: "ordago", BetAccepted: "accept", OrdagoAccepted: "accept", BetRejected: "reject", Passed: "pass", MusRequested: "mus", MusCut: "cut" }[e.kind] ?? "", amount: e.payload.amount }) || BUBBLE[e.kind] : talkAs(e, obs.seats[e.actor]);
         setStatus(text);
@@ -1135,7 +1147,7 @@ async function animateTo(obs) {
         await sleep(1500);
         // Un personaje que lleva la 31 lo celebra.
         const proud = obs.seats.find((s) => s.kind === "bot" && frase(s.avatar, "revela_31") && handPoints(e.payload.hands[String(s.seat)] || []) === 31);
-        if (proud) await speakWithBubble(frase(proud.avatar, "revela_31", e.seq), proud.seat, 1200);
+        if (proud && !isQuick()) await speakWithBubble(frase(proud.avatar, "revela_31", e.seq), proud.seat, 1200);
       } else if (e.kind === "LanceResolved" && e.payload.ordago) {
         // El órdago querido decide la partida (reglamento FEM): se explica en la mesa.
         const w = e.payload.winner_seat;
@@ -1231,7 +1243,7 @@ async function dealCards() {
 async function animateDeal(obs) {
   const table = document.querySelector(".table");
   const deck = document.querySelector(".deck");
-  if (!table || !deck || settings.reduce_motion) return;
+  if (!table || !deck || settings.reduce_motion || isQuick()) return;
   const me = obs.seat;
   const from = deck.getBoundingClientRect();
   const origin = table.getBoundingClientRect();
@@ -1431,7 +1443,7 @@ async function showSummary() {
       <div class="summary-box">
       <h3>Resultado</h3>
       ${endingHTML(a, obs)}
-      <p><strong>Marcador final:</strong> ${a.result.score[a.result.my_team]} – ${a.result.score[1 - a.result.my_team]} · ${s.envites} envites · ${s.ordagos} órdagos.</p>
+      <p><strong>Marcador final:</strong> ${a.result.score[a.result.my_team]} – ${a.result.score[1 - a.result.my_team]} · tus jugadas: ${s.envites} envites y ${s.ordagos} órdagos.</p>
       <h3>Momentos clave</h3>
       <ul>${a.key_moments.slice(0, 3).map((m) => `<li>Jugada ${m.round_no}: ${esc(momentoEs(m.description, a.result.my_team))}</li>`).join("") || "<li>Partida tranquila.</li>"}</ul>
       <p class="muted"><strong>Decisiones:</strong> ${Number((a.agent_summary || {}).total_decisions || 0)} registradas.</p>
@@ -1533,9 +1545,18 @@ function learn() {
         <button class="btn" data-nav="training">Ver situaciones</button></div>
       <div class="panel stack"><span class="kicker">Entrenar</span><h2 class="card-title">Contra un bot</h2>
         <p class="muted">Elige un bot concreto y enfréntate a él tantas veces como quieras.</p>
-        <label class="field">Bot<select id="vs-bot"><option value="sencillo">Sencillo</option><option value="medio">Medio</option><option value="experto">Experto</option><option value="dijkstra">Dijkstra</option><option value="greedy">Greedy</option><option value="a_star">A*</option></select></label>
+        <label class="field">Bot<select id="vs-bot"><option value="sencillo">sencillo</option><option value="medio" selected>medio</option><option value="experto">experto</option></select></label>
         <button class="btn" id="vs-start">Jugar contra este bot</button></div>
     </div></div>`));
+  api("/api/bots").then((bots) => {
+    const sel = document.getElementById("vs-bot");
+    if (!sel) return;
+    const opt = (b) => `<option value="${esc(b.name)}" ${b.name === "medio" ? "selected" : ""}>${esc(b.name)}</option>`;
+    const elegibles = bots.filter((b) => b.name !== "random" && !b.alias);
+    const externos = elegibles.filter((b) => b.external && b.name !== "ejemplo");
+    sel.innerHTML = `<optgroup label="Nuestros bots (de más fácil a más difícil)">${elegibles.filter((b) => !b.external).map(opt).join("")}</optgroup>`
+      + (externos.length ? `<optgroup label="Bots de otros equipos">${externos.map(opt).join("")}</optgroup>` : "");
+  }).catch(() => {});
   document.getElementById("vs-start").onclick = () => startGame({ mode: "contra_bot", rivals: document.getElementById("vs-bot").value, partner: "sencillo" });
   document.getElementById("learn-play").onclick = () => startGame({ mode: "entrenamiento", rivals: "sencillo", partner: "sencillo" }, { help: true });
 }

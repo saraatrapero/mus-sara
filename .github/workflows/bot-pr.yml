@@ -15,11 +15,8 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install -e ".[dev]"
-      - name: Análisis estático (llamadas prohibidas)
-        run: |
-          if grep -rnE "import (os|subprocess|socket|shutil|ctypes)|from (os|subprocess|socket|shutil|ctypes)|__import__|\beval\(|\bexec\(|open\(" bots/*/bot.py bots/*/*.py; then
-            echo "::error::Los bots no pueden usar os, subprocess, socket, eval, exec ni abrir ficheros"; exit 1
-          fi
+      # Incluye el filtro del código (tests/bot_conformance/test_codigo_seguro.py), que
+      # además corre en la CI de cada PR.
       - name: Tests de conformidad
         run: pytest tests/bot_conformance -v
       - name: Mini-torneo contra los bots de referencia

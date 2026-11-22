@@ -37,15 +37,5 @@ nav:
   - Testing y experimentos: testing.md
   - Despliegue: deployment.md
   - Decisiones (ADR): adr/index.md
-  - Diseño (Fase 0):
-      - Índice: design/00-indice.md
-      - Requisitos: design/01-requisitos.md
-      - Arquitectura: design/02-arquitectura.md
-      - Motor y reglas: design/03-motor-y-reglas.md
-      - Eventos y observaciones: design/04-eventos-y-observaciones.md
-      - API de bots: design/05-api-bots.md
-      - Agentes: design/06-agentes.md
-      - PlayerModel: design/07-player-model.md
-      - Datos y seguridad: design/08-datos-y-seguridad.md
-      - Interfaz: design/09-interfaz.md
-      - Testing y plan: design/10-testing-y-plan.md
+not_in_nav: |
+  design/*

@@ -15,7 +15,25 @@ Práctica de **Inteligencia Artificial — 3º MAT-A, CUNEF Universidad, 2026/20
 
 | Jugar | Elegir rival | Competir | Revisar |
 |---|---|---|---|
-| Partidas rápidas o personalizadas, con y sin señas. | Sencillo, Medio, Experto, Dijkstra, Greedy o A*. | Torneo público entre todos los bots y clasificación actualizada. | Partidas guardadas, replay y resumen de decisiones. |
+| Partidas rápidas o personalizadas, con y sin señas. | Sencillo, Medio, Experto, Matemático, Inteligente y más. | Torneo público entre todos los bots y clasificación actualizada. | Partidas guardadas, replay y resumen de decisiones. |
+
+## La mejor IA
+
+**`inteligente`** es el bot más fuerte del proyecto. Es una red neuronal pequeña (numpy para
+jugar, PyTorch solo para entrenar) que recibe la observación de su asiento codificada como un
+vector de números y devuelve una probabilidad para cada acción legal. Se entrenó en dos pasos:
+primero **imitando** al bot de reglas `reglas` y después con **aprendizaje por refuerzo (PPO)**
+jugando contra una liga de rivales. Elegimos este diseño porque el mus tiene información oculta
+y faroles: en vez de programar a mano cuándo envidar o echar un órdago, la red lo aprende de
+millones de jugadas y el refuerzo la lleva más allá de las reglas que imitó. Viene de nuestro
+otro repositorio ([mus-cunef/mus](https://github.com/mus-cunef/mus)) a través de un adaptador
+([docs/bots-cunef.md](docs/bots-cunef.md)).
+
+Medido con repartos duplicados (intervalo al 95 %): `inteligente` gana el 69,8 ± 2,3 % contra
+`reglas` (1.000 partidas) y el 58,7 ± 2,8 % contra `experto` (600 partidas). El mejor bot propio
+de este repositorio es **`experto`** (multiagente con Monte Carlo y modelo de jugador), que gana
+el 62,5 ± 3,7 % a `matematico`. La clasificación completa está en
+[Clasificación de bots](docs/clasificacion.md).
 
 ## Empezar
 
@@ -23,8 +41,8 @@ Práctica de **Inteligencia Artificial — 3º MAT-A, CUNEF Universidad, 2026/20
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"                  # incluye numpy, para los bots de mus-cunef
 
-pytest                                   # 296 tests
-musst-play --bots sencillo profesional   # una partida sin interfaz
+pytest                                   # todos los tests
+musst-play --bots sencillo experto       # una partida sin interfaz
 mus-torneo -n 5                          # torneo entre todos los bots (Elo de Bradley-Terry)
 MUSST_SECURE_COOKIES=0 uvicorn musst.server.app:app --reload   # web con servidor: http://localhost:8000
 python scripts/build_web.py --out site && python -m http.server -d site 8001   # web sin servidor (Pyodide)
@@ -57,7 +75,7 @@ Tutorial completo, sandbox y cómo entrar en el torneo: **[docs/bot-api.md](docs
 
 | Bots | Origen |
 |---|---|
-| `random`, `sencillo`, `medio`, `experto`, `matematico`, `dijkstra`, `greedy`, `a_star` | MUS.ST (multiagente, Monte Carlo, modelo de jugador y búsqueda) |
+| `random`, `sencillo`, `medio`, `experto`, `matematico` | MUS.ST (multiagente, Monte Carlo, modelo de jugador) |
 | `basico`, `reglas` (+ `reglas_agresivo`, `reglas_conservador`), `inteligente` (red neuronal, imitación + PPO) | [mus-cunef/mus](https://github.com/mus-cunef/mus), a través de un adaptador entre APIs: **[docs/bots-cunef.md](docs/bots-cunef.md)** |
 | Los de `bots/` | Externos, vía Pull Request |
 
@@ -82,7 +100,7 @@ src/musst/
 bots/           bots externos (uno por carpeta, vía Pull Request)
 experiments/    experimentos reproducibles (escalera de niveles, adaptación)
 tests/          unit · property · privacy · integration · bot_conformance
-docs/           MkDocs (ReadTheDocs) + diseño de la Fase 0 + ADR
+docs/           MkDocs (ReadTheDocs) + ADR
 config/         reglas y parámetros de agentes
 ```
 
@@ -98,7 +116,6 @@ config/         reglas y parámetros de agentes
 | [Testing y experimentos](docs/testing.md) | Pirámide de tests, privacidad, resultados medidos |
 | [Despliegue](docs/deployment.md) | GitHub Pages con Pyodide, local, ReadTheDocs |
 | [Decisiones (ADR)](docs/adr/index.md) | Por qué cada decisión, alternativas y limitaciones |
-| [Diseño de la Fase 0](docs/design/00-indice.md) | Requisitos y arquitectura del proyecto |
 
 
 ## Flujo de trabajo

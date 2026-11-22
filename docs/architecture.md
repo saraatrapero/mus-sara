@@ -1,7 +1,6 @@
 # Arquitectura
 
-El diseño completo está en [design/02-arquitectura.md](design/02-arquitectura.md). Esta página
-describe lo **implementado** y dónde está cada pieza.
+Esta página describe lo **implementado** y dónde está cada pieza.
 
 ## Capas
 

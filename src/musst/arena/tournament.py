@@ -122,14 +122,15 @@ class TournamentResult:
         return {k: (v[0], v[1]) for k, v in tabla.items()}
 
     def ranking(self) -> list[Standing]:
-        """Experto siempre ocupa el primer puesto; el resto se ordena por Elo."""
-        ordered = sorted(
-            (s for s in self.standings if s.name != "experto"),
+        """Clasificación por Elo (desempate: % de victorias y diferencia de tantos).
+
+        Ningún bot tiene un puesto reservado: el orden sale solo de los resultados.
+        """
+        return sorted(
+            self.standings,
             key=lambda s: (round(s.elo, 6), s.win_rate, s.points_for - s.points_against),
             reverse=True,
         )
-        experto = next((s for s in self.standings if s.name == "experto"), None)
-        return ([experto] if experto is not None else []) + ordered
 
     def to_dict(self) -> dict[str, Any]:
         return {
