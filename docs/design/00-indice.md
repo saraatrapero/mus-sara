@@ -2,9 +2,7 @@
 
 > *El Mus que aprende cómo juegas.*
 
-Este directorio contiene el diseño completo previo a la implementación. **No hay código todavía.**
-Ninguna fase de implementación empieza hasta que este diseño se valide (ver
-[11-preguntas-profesor.md](11-preguntas-profesor.md)).
+Este directorio recoge los requisitos y las decisiones principales del proyecto.
 
 ## Fuentes de verdad
 
@@ -32,7 +30,7 @@ regla FEM.
 | 08 | [Datos y seguridad](08-datos-y-seguridad.md) | Modelo de datos, persistencia, seguridad, logging |
 | 09 | [Interfaz](09-interfaz.md) | Pantallas, mesa, accesibilidad, identidad visual |
 | 10 | [Testing y plan](10-testing-y-plan.md) | Plan de pruebas, experimentos, plan por fases, riesgos |
-| 11 | [Preguntas para el profesor](11-preguntas-profesor.md) | **Conflictos y decisiones que debe validar el profesor** |
+
 
 ## Principios rectores
 

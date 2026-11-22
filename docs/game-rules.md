@@ -2,9 +2,8 @@
 
 La fuente de verdad es el **Reglamento de Juego de la Federación Española de Mus (FEM)**.
 Cada regla del motor indica su artículo. Las que el Reglamento **no especifica** están marcadas
-como **[CONVENCIÓN]**: siguen el Mus tradicional, son configurables en
-`config/rules.default.toml` y se han trasladado al profesor
-([preguntas](design/11-preguntas-profesor.md)).
+como **[CONVENCIÓN]**: siguen el Mus tradicional y son configurables en
+`config/rules.default.toml`.
 
 ## Resumen
 
@@ -71,7 +70,7 @@ se traduce en un límite de tiempo por decisión.
 ## Partida
 
 El Reglamento habla de partidas "a cinco juegos". MUS.ST juega por defecto **un juego a 40
-tantos** (configurable a 20-60). Pendiente de confirmar con el profesor (P4).
+tantos** (configurable a 20-60).
 
 ## Señas y miradas (FEM VIII)
 

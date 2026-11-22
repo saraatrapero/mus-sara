@@ -148,5 +148,4 @@ Prioridad: **P0** = camino crítico de la práctica · **P1** = núcleo del prod
 | C.2 Ramas, PR, `main` protegida | 0.5 | `main`/`develop`/`feature/*` + branch protection | 1 |
 | C.3 Tests en cada PR | 0.5 | GitHub Actions | 1 (pronto, no en la fase 27) |
 
-> **Nota:** la dificultad del Mus no aparece en la tabla de la práctica (Sección 4). Hay que
-> pedir al profesor que la asigne, porque multiplica la puntuación de los bots (pregunta P3).
+> **Nota:** la dificultad del Mus no aparece en la tabla de la práctica (Sección 4); se asigna dentro del alcance de la propia implementación.

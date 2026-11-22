@@ -20,7 +20,9 @@ from typing import Any
 
 from musst.arena import bradley_terry
 from musst.bots.api import Bot
-from musst.runtime.runner import play_game
+from musst.engine.actions import Action
+from musst.engine.observation import Observation
+from musst.runtime.runner import BotFailure, play_game
 
 
 @dataclass(frozen=True)
@@ -29,6 +31,18 @@ class Participant:
     factory: Callable[[], Bot]
     author: str = ""
     version: str = ""
+
+
+class FailingBot(Bot):
+    """Instancia de emergencia: convierte fallos en la creación del bot en una derrota controlada."""
+
+    name = "failing_bot"
+
+    def __init__(self, detail: str) -> None:
+        self.detail = detail
+
+    def decide(self, observation: Observation) -> Action:
+        raise BotFailure("exception", self.detail)
 
 
 @dataclass
@@ -145,7 +159,19 @@ def run_tournament(
         for g in range(games_per_pair):
             game_seed = seed * 1000 + pi * 100 + g
             for first, second in ((a, b), (b, a)):  # mus duplicado
-                bots = [first.factory(), second.factory(), first.factory(), second.factory()]
+
+                def safe_factory(participant: Participant) -> Bot:
+                    try:
+                        return participant.factory()
+                    except Exception as exc:
+                        return FailingBot(repr(exc))
+
+                bots = [
+                    safe_factory(first),
+                    safe_factory(second),
+                    safe_factory(first),
+                    safe_factory(second),
+                ]
                 match = play_game(
                     bots, seed=game_seed, mode="tournament", time_limit_s=time_limit_s
                 )

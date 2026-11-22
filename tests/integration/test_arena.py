@@ -33,6 +33,21 @@ def test_torneo_sobrevive_a_un_bot_roto_y_genera_clasificacion(tmp_path):
     assert (out / "index.html").read_text().startswith("<!doctype html>")
 
 
+def test_torneo_sobrevive_a_un_bot_cuya_fabrica_falla():
+    def broken_factory():
+        raise RuntimeError("no puedo iniciar")
+
+    parts = [
+        Participant("funciona", lambda: SimpleBot()),
+        Participant("fabrica-rota", broken_factory),
+    ]
+    result = run_tournament(parts, games_per_pair=2, seed=3)
+    rota = next(s for s in result.standings if s.name == "fabrica-rota")
+    assert rota.games == 4
+    assert rota.errors == 4
+    assert rota.wins == 0
+
+
 def test_torneo_reproducible():
     parts = [Participant("a", lambda: SimpleBot(1)), Participant("b", lambda: RandomBot(2))]
     r1 = run_tournament(parts, games_per_pair=2, seed=5)

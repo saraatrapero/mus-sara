@@ -80,15 +80,9 @@ config/         reglas y parámetros de agentes
 | [Testing y experimentos](testing.md) | Pirámide de tests, privacidad, resultados medidos |
 | [Despliegue](deployment.md) | GitHub Pages con Pyodide, local, ReadTheDocs |
 | [Decisiones (ADR)](adr/index.md) | Por qué cada decisión, alternativas y limitaciones |
-| [Diseño de la Fase 0](design/00-indice.md) | Requisitos, arquitectura y **preguntas para el profesor** |
+| [Diseño de la Fase 0](design/00-indice.md) | Requisitos y arquitectura del proyecto |
 
-## Validado por el profesor
-
-- Se permite el **Mus FEM de 4 jugadores en 2 parejas**; no se ha modificado el juego.
-- **Dificultad 5** (cada victoria de un bot en la Sección 3 vale 0.5 × 5 = 2.5).
-- La web se publica en **GitHub Pages** con Python en el navegador (Pyodide).
-
-El resto de preguntas abiertas están en [preguntas al profesor](design/11-preguntas-profesor.md).
+El proyecto usa el **Mus FEM de 4 jugadores en 2 parejas**. Las convenciones adicionales se indican y pueden configurarse.
 
 ## Flujo de trabajo
 

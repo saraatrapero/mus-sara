@@ -13,9 +13,9 @@ Práctica de **Inteligencia Artificial — 3º MAT-A, CUNEF Universidad, 2026/20
 
 [![CI](https://github.com/saraatrapero/mus-sara/actions/workflows/ci.yml/badge.svg)](https://github.com/saraatrapero/mus-sara/actions/workflows/ci.yml)
 
-| Jugar | Aprender | Competir | Analizar |
+| Jugar | Elegir rival | Competir | Revisar |
 |---|---|---|---|
-| Partida rápida, personalizada (yo con un bot contra 2 bots, yo y otra persona contra 2 bots, o 4 personas en el mismo dispositivo), contra un bot concreto; señas con las caras de los jugadores | Tutorial interactivo, aprender jugando, situaciones de entrenamiento, asistente «¿qué puedo hacer?» | Bot Arena, torneo automático, scoreboard, observar Bot vs Bot | Historial, replay ⏮ ◀ ▶ ⏭, estadísticas, estilo de juego, momentos clave, «¿y si hubieras elegido lo contrario?» |
+| Partidas rápidas o personalizadas, con y sin señas. | Sencillo, Medio, Experto, Dijkstra, Greedy o A*. | Torneo público entre todos los bots y clasificación actualizada. | Partidas guardadas, replay y resumen de decisiones. |
 
 ## Empezar
 
@@ -57,7 +57,7 @@ Tutorial completo, sandbox y cómo entrar en el torneo: **[docs/bot-api.md](docs
 
 | Bots | Origen |
 |---|---|
-| `random`, `sencillo`, `medio`, `profesional`, `matematico` | MUS.ST (multiagente, Monte Carlo, modelo de jugador) |
+| `random`, `sencillo`, `medio`, `experto`, `matematico`, `dijkstra`, `greedy`, `a_star` | MUS.ST (multiagente, Monte Carlo, modelo de jugador y búsqueda) |
 | `basico`, `reglas` (+ `reglas_agresivo`, `reglas_conservador`), `inteligente` (red neuronal, imitación + PPO) | [mus-cunef/mus](https://github.com/mus-cunef/mus), a través de un adaptador entre APIs: **[docs/bots-cunef.md](docs/bots-cunef.md)** |
 | Los de `bots/` | Externos, vía Pull Request |
 
@@ -98,15 +98,8 @@ config/         reglas y parámetros de agentes
 | [Testing y experimentos](docs/testing.md) | Pirámide de tests, privacidad, resultados medidos |
 | [Despliegue](docs/deployment.md) | GitHub Pages con Pyodide, local, ReadTheDocs |
 | [Decisiones (ADR)](docs/adr/index.md) | Por qué cada decisión, alternativas y limitaciones |
-| [Diseño de la Fase 0](docs/design/00-indice.md) | Requisitos, arquitectura y **preguntas para el profesor** |
+| [Diseño de la Fase 0](docs/design/00-indice.md) | Requisitos y arquitectura del proyecto |
 
-## Validado por el profesor
-
-- Se permite el **Mus FEM de 4 jugadores en 2 parejas**; no se ha modificado el juego.
-- **Dificultad 5** (cada victoria de un bot en la Sección 3 vale 0.5 × 5 = 2.5).
-- La web se publica en **GitHub Pages** con Python en el navegador (Pyodide).
-
-El resto de preguntas abiertas están en [preguntas al profesor](docs/design/11-preguntas-profesor.md).
 
 ## Flujo de trabajo
 

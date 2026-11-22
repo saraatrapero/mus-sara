@@ -85,7 +85,7 @@ He agrupado tus 31 fases en **hitos**, con dos cambios de orden justificados:
 
 | Hito | Fases | Entregable | Criterio de salida |
 |---|---|---|---|
-| **H0 Validación** | 0 | Este diseño + respuestas del profesor | Preguntas P1-P8 resueltas |
+| **H0 Validación** | 0 | Diseño técnico aprobado | Requisitos funcionales aceptados |
 | **H1 Cimientos** | 1, (27) | Repo: pyproject, LICENSE, README, `main`/`develop` protegidas, CI con ruff, mypy y pytest, MkDocs | CI verde en un PR |
 | **H2 Motor** | 2-10 | `musst.engine` completo; `play_game` con RandomBot | Todos los tests de reglas, invariantes y privacidad en verde; cobertura ≥ 90 % |
 | **H3 Plataforma** | 11, 12 | SimpleBot, API pública, sandbox, tests de conformidad, tutorial "crea tu bot" | Un bot de ejemplo se añade sin tocar el motor |
@@ -102,7 +102,7 @@ Cada fase se hace en su rama `feature/`, con un PR a `develop` y sus tests.
 
 | # | Riesgo | Impacto | Mitigación |
 |---|---|---|---|
-| R1 | El profesor no acepta el Mus de 4 jugadores | Bloqueante | P1 con alternativas preparadas; el motor sigue valiendo |
+| R1 | Interpretación diferente del Mus de 4 jugadores | Bloqueante | Mantener el Reglamento FEM y documentar toda convención adicional |
 | R2 | Valores de las jugadas no especificados por la FEM | Medio | [CONVENCIÓN] configurable + P5 |
 | R3 | **Dos humanos en la misma pareja** necesitan dos dispositivos (en uno se verían las cartas del compañero) | Alto para el Modo 1 | MVP: humano + bot compañero; después, sala con código de invitación por WebSocket. Nunca hot-seat sin pantalla de "pasa el dispositivo" |
 | R4 | Hosting gratuito con arranque en frío / disco efímero | Medio | Pantalla de "despertando servidor"; BD externa gratuita; Plan B con Streamlit |

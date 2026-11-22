@@ -371,8 +371,8 @@ const SOUND_OF = {
 
 // ------------------------------------------------------------------ navegación
 const views = { home, learn, arena, stats, settings: settingsView, game: () => renderGame(), tutorial, training, admin: adminView, champs: champsView, champ: champView, profile, room: roomLobby };
-const OPEN_VIEWS = new Set(["home", "learn", "tutorial", "settings"]);
-const PRIVATE_VIEWS = new Set(["arena", "stats", "profile", "room", "champs", "champ", "admin", "training"]);
+const OPEN_VIEWS = new Set(["home", "learn", "tutorial", "settings", "champs"]);
+const PRIVATE_VIEWS = new Set(["arena", "stats", "profile", "room", "champ", "admin", "training"]);
 function playAsGuest() {
   guest = true;
   updateAccount();
@@ -2004,12 +2004,12 @@ async function botRanking() {
     if (!res.ok) throw new Error(String(res.status));
     data = await res.json();
   } catch {
-    el.innerHTML = '<h2 class="card-title">🏆 Torneo de bots</h2><p class="muted">La clasificación se publica cuando la GitHub Action juega el torneo (al fusionar en main, cada lunes o a mano).</p>';
+    el.innerHTML = '<h2 class="card-title">🏆 Clasificación pública de bots</h2><p class="muted">La clasificación se publica al ejecutar el torneo automático. Participan todos los bots del repositorio. Si un bot falla, excede el tiempo o hace una jugada ilegal, pierde esa partida y el torneo continúa.</p>';
     return;
   }
   const pctTxt = (r) => `${(r.win_rate * 100).toFixed(1)} % ± ${((r.margin_95 ?? 0) * 100).toFixed(1)}`;
-  el.innerHTML = `<h2 class="card-title">🏆 Torneo de bots</h2>
-    <p class="muted">Todos contra todos con repartos duplicados (${data.games_per_pair} repartos por cruce, cada uno jugado en los dos sentidos) · ${esc(data.generated_at.slice(0, 10))}.
+  el.innerHTML = `<h2 class="card-title">🏆 Clasificación pública de bots</h2>
+    <p class="muted">Todos los bots del repositorio participan en una liga todos contra todos, sin iniciar sesión. Se juegan ${data.games_per_pair} repartos por cruce en los dos sentidos, actualizados el ${esc(data.generated_at.slice(0, 10))}. Un fallo, suspensión o jugada ilegal pierde solo esa partida; el torneo continúa.
     Elo de Bradley-Terry: media 1500; 200 puntos de diferencia ≈ 76 % de victorias.</p>
     <div class="table-wrap"><table class="data"><thead><tr><th>#</th><th class="l">Bot</th><th class="l">Autor</th><th>Elo</th><th>Partidas</th><th>% victorias (± 95 %)</th><th>Faltas</th></tr></thead>
     <tbody>${data.ranking.map((r, i) => `<tr><td>${i + 1}</td><td class="l"><code>${esc(r.name)}</code></td><td class="l">${esc(r.author || "—")}</td><td>${Math.round(r.elo)}</td><td>${r.games}</td><td>${pctTxt(r)}</td><td>${r.errors}</td></tr>`).join("")}</tbody></table></div>`;

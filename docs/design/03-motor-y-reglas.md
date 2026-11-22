@@ -8,7 +8,7 @@ los da por sabidos. Por eso las reglas se dividen en dos tipos:
 
 - **[FEM]**: implementada según el artículo citado.
 - **[CONVENCIÓN]**: regla tradicional del Mus (ocho reyes) que la FEM no escribe. Se implementa
-  en `config/rules.default.toml`, se documenta y se lista en las preguntas al profesor (P5).
+  en `config/rules.default.toml`.
 
 ### 1.1 Baraja y valores
 
