@@ -124,3 +124,4 @@ config/         reglas y parámetros de agentes
 CI verde. Ver [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Licencia [MIT](LICENSE).
+
