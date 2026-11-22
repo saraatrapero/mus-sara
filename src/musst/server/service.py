@@ -27,7 +27,7 @@ from musst.learning.player_model import PlayerModel
 from musst.persistence.db import ROLES, Repository, User
 from musst.runtime.runner import play_game
 from musst.server import coach
-from musst.server.sessions import BOT_LEVELS, GameSession, Seat, SessionManager
+from musst.server.sessions import GameSession, Seat, SessionManager
 
 MODES = ("rapida", "personalizada", "entrenamiento", "contra_bot", "campeonato")
 USERNAME = re.compile(r"^[A-Za-z0-9_.\-]{3,32}$")
@@ -204,9 +204,10 @@ class MusService:
         rivals = body.get("rivals", "medio")
         target = int(body.get("target", 40))
         seed = body.get("seed")
-        if mode not in MODES or rivals not in BOT_LEVELS:
+        available_bots = {entry.name for entry in all_entries(sandboxed=True)}
+        if mode not in MODES or rivals not in available_bots:
             raise ApiError(422, "Parámetros de partida no válidos")
-        if partner not in (*BOT_LEVELS, "human"):
+        if partner != "human" and partner not in available_bots:
             raise ApiError(422, "Compañero no válido")
         if partner == "human" and not self.human_partner:
             raise ApiError(422, "El compañero humano necesita el servidor; aquí juega con un bot")

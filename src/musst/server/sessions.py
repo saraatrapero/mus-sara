@@ -16,7 +16,7 @@ from typing import Any
 from musst.agents.base import Decision
 from musst.analytics.analysis import decision_counterfactuals, key_moments, seat_statistics
 from musst.bots.api import Bot, GameEndInfo, GameStartInfo
-from musst.bots.registry import get_entry
+from musst.bots.registry import all_entries, get_entry
 from musst.engine.actions import Action, action_from_dict, action_to_dict
 from musst.engine.config import RulesConfig
 from musst.engine.game import IllegalAction, MusGame, partner_of, team_of
@@ -29,7 +29,7 @@ from musst.server.razones import explain_move
 
 log = logging.getLogger("musst.public.server")
 
-BOT_LEVELS = ("sencillo", "medio", "experto", "profesional", "dijkstra", "greedy", "a_star")
+BOT_LEVELS = tuple(entry.name for entry in all_entries(sandboxed=True))
 
 
 @dataclass
