@@ -497,11 +497,15 @@ function home() {
     ).join("");
   }).catch(() => {});
   const syncPlayers = () => {
-    const many = document.querySelector('input[name="players"]:checked').value !== "bot";
-    document.getElementById("room-hint").hidden = !many;
-    document.getElementById("start-btn").textContent = many && cloud.cloudEnabled() ? "Crear sala" : "Empezar a jugar";
+    const mode = document.querySelector('input[name="players"]:checked').value;
+    const multiplayer = mode === "pareja" || mode === "cuatro";
+    document.getElementById("room-hint").hidden = !multiplayer;
+    const joinForm = document.getElementById("join-room");
+    if (joinForm) joinForm.hidden = !multiplayer;
+    document.getElementById("start-btn").textContent = multiplayer && cloud.cloudEnabled() ? "Crear sala" : "Empezar a jugar";
   };
   document.querySelectorAll('input[name="players"]').forEach((r) => (r.onchange = syncPlayers));
+  syncPlayers();
   const joinForm = document.getElementById("join-room");
   if (joinForm) joinForm.onsubmit = (e) => { e.preventDefault(); joinRoom(new FormData(joinForm).get("code")); };
   document.getElementById("custom").onsubmit = (e) => {
@@ -2026,15 +2030,12 @@ async function botRanking() {
   }
   const pctTxt = (r) => `${(r.win_rate * 100).toFixed(1)} % ± ${((r.margin_95 ?? 0) * 100).toFixed(1)}`;
   const ranking = [...(data.ranking || [])].sort((a, b) => b.elo - a.elo);
-  const expertoIndex = ranking.findIndex((r) => r.name === "experto");
-  if (expertoIndex >= 0) ranking.unshift(ranking.splice(expertoIndex, 1)[0]);
   const top = ranking.slice(0, 3);
   const podiumOrder = top.length >= 3 ? [top[1], top[0], top[2]] : top;
   const podium = podiumOrder.map((r) => {
     const place = ranking.indexOf(r) + 1;
     const medal = place === 1 ? "🥇" : place === 2 ? "🥈" : "🥉";
-    const champion = r.name === "experto" ? '<span class="podium-champion">Campeón actual</span>' : "";
-    return `<article class="podium-place podium-${place}">${champion}<span class="podium-medal" aria-label="${place}º puesto">${medal}</span><strong>${esc(r.name)}</strong><span>${Math.round(r.elo)} Elo</span><span>${pctTxt(r)} victorias</span></article>`;
+    return `<article class="podium-place podium-${place}"><span class="podium-medal" aria-label="${place}º puesto">${medal}</span><strong>${esc(r.name)}</strong><span>${Math.round(r.elo)} Elo</span><span>${pctTxt(r)} victorias</span></article>`;
   }).join("");
   el.innerHTML = `<h2 class="card-title">🏆 Clasificación pública de bots</h2>
     <p class="muted">Todos los bots del repositorio participan en una liga todos contra todos, sin iniciar sesión. Se juegan ${data.games_per_pair} repartos por cruce en los dos sentidos, actualizados el ${esc(data.generated_at.slice(0, 10))}. Un fallo, suspensión o jugada ilegal pierde solo esa partida; el torneo continúa.</p>
