@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import heapq
+import random
 
 from musst.bots.api import (
     AcceptAction,
@@ -18,7 +19,7 @@ from musst.bots.api import (
     RejectAction,
     RaiseAction,
 )
-from musst.bots.toolkit import discard_options, hand_strength, hand_value
+from musst.bots.toolkit import discard_options, hand_strength, hand_value, lance_winner, sample_world
 from musst.engine.observation import Observation
 
 
@@ -86,66 +87,83 @@ def _value(obs: Observation, action: Action) -> float:
 class _SearchBot(Bot):
     author = "MUS.ST"
 
+    def __init__(self) -> None:
+        self.rng = random.Random()
+        self.last_explanation = ""
+
     def _choose(self, obs: Observation) -> Action:
         raise NotImplementedError
 
     def decide(self, observation: Observation) -> Action:
-        return self._choose(observation)
+        action = self._choose(observation)
+        self.last_explanation = f"{self.name}: {action.type} según la estrategia de búsqueda"
+        return action
 
 
 class GreedyBot(_SearchBot):
-    """Elige siempre la acción con mayor valor inmediato."""
+    """Agente voraz: compara todas las opciones y toma la mejor inmediata."""
 
     name = "greedy"
 
     def _choose(self, obs: Observation) -> Action:
         actions = _concrete_actions(obs)
-        return max(actions, key=lambda action: _value(obs, action))
+        chosen = max(actions, key=lambda action: _value(obs, action))
+        self.last_explanation = f"Greedy elige {chosen.type}: maximiza el valor inmediato de la mano y del marcador"
+        return chosen
 
 
 class DijkstraBot(_SearchBot):
-    """Construye un grafo de acciones legales y elige el camino de menor coste acumulado."""
+    """Agente Dijkstra: minimiza el coste acumulado de las decisiones y riesgos."""
 
     name = "dijkstra"
 
     def _choose(self, obs: Observation) -> Action:
         actions = _concrete_actions(obs)
-        start = "inicio"
-        queue: list[tuple[float, int, str]] = [(0.0, 0, start)]
-        costs: dict[str, float] = {start: 0.0}
-        chosen: dict[str, Action] = {}
+        own_score = obs.score[obs.team]
+        rival_score = obs.score[1 - obs.team]
+        queue: list[tuple[float, int, Action, str]] = []
 
         for index, action in enumerate(actions):
-            node = f"accion:{index}"
-            chosen[node] = action
-            cost = 1.0 - _value(obs, action)
-            edge = costs[start] + max(0.0, cost)
-            if edge < costs.get(node, float("inf")):
-                costs[node] = edge
-                heapq.heappush(queue, (edge, index + 1, node))
+            immediate = 1.0 - _value(obs, action)
+            score_risk = abs(rival_score - own_score) / max(obs.target, 1) * 0.25
+            depth = 1
+            node = f"{obs.phase}|{obs.round_no}|{own_score}|{rival_score}|{action.type}"
+            heapq.heappush(queue, (immediate + score_risk + depth * 0.02, index, action, node))
 
-        best_node = min((node for node in costs if node != start), key=lambda node: costs[node])
-        return chosen[best_node]
+        _, _, chosen, node = heapq.heappop(queue)
+        self.last_explanation = f"Dijkstra elige {chosen.type}: minimiza coste y riesgo acumulado desde {node}"
+        return chosen
 
 
 class AStarBot(_SearchBot):
-    """Busca el mejor curso inmediato con A*: coste real más una heurística de fuerza de mano."""
+    """Agente A*: combina coste real con una heurística que estima opciones de victoria."""
 
     name = "a_star"
 
     def _choose(self, obs: Observation) -> Action:
         actions = _concrete_actions(obs)
         strength = hand_value(obs.hand)
-        score_progress = max(obs.score) / obs.target
-        heuristic = max(0.0, 1.0 - strength - score_progress * 0.25)
+        points_needed = max(0, obs.target - obs.score[obs.team])
+        heuristic = max(0.0, 1.0 - strength - (points_needed / obs.target) * 0.35)
+
+        worlds = [sample_world(obs, random.Random(obs.round_no * 1000 + i), max_tries=12) for i in range(8)]
+        possible_wins = 0
+        if worlds and obs.phase in ("grande", "chica", "pares", "juego", "punto"):
+            for world in worlds:
+                winner = lance_winner(obs.phase, world, obs.mano)
+                if winner is not None and winner % 2 == obs.team:
+                    possible_wins += 1
+        win_probability = possible_wins / max(len(worlds), 1)
 
         queue: list[tuple[float, int, Action]] = []
         for index, action in enumerate(actions):
             real_cost = 1.0 - _value(obs, action)
-            estimated_total = max(0.0, real_cost) + heuristic
+            estimated_total = max(0.0, real_cost) + heuristic - win_probability * 0.30
             heapq.heappush(queue, (estimated_total, index, action))
 
-        return heapq.heappop(queue)[2]
+        _, _, chosen = heapq.heappop(queue)
+        self.last_explanation = f"A* elige {chosen.type}: coste real {real_cost:.2f}, heurística {heuristic:.2f}, victoria posible {win_probability:.0%}"
+        return chosen
 
 
 __all__ = ["GreedyBot", "DijkstraBot", "AStarBot"]

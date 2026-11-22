@@ -443,13 +443,13 @@ function home() {
           <label><input type="radio" name="players" value="pareja"> 👥 Dos personas</label>
           <label><input type="radio" name="players" value="cuatro"> 👨‍👩‍👧‍👦 Cuatro personas</label>
         </div></fieldset>
-        <fieldset class="seg-field"><legend>Dificultad de los bots</legend><div class="seg">
-          <label><input type="radio" name="rivals" value="sencillo"> Fácil</label>
-          <label><input type="radio" name="rivals" value="medio" checked> Normal</label>
-          <label><input type="radio" name="rivals" value="experto"> Experto</label>
-          <label><input type="radio" name="rivals" value="dijkstra"> Dijkstra</label>
-          <label><input type="radio" name="rivals" value="greedy"> Greedy</label>
-          <label><input type="radio" name="rivals" value="a_star"> A*</label>
+        <fieldset class="seg-field bot-rivals"><legend>Elige contra qué bot juegas</legend><div class="seg">
+          <label><input type="radio" name="rivals" value="sencillo"> <strong>Sencillo</strong><small>Heurísticas básicas</small></label>
+          <label><input type="radio" name="rivals" value="medio"> <strong>Medio</strong><small>Monte Carlo y marcador</small></label>
+          <label><input type="radio" name="rivals" value="experto" checked> <strong>Experto</strong><small>Agentes especializados</small></label>
+          <label><input type="radio" name="rivals" value="dijkstra"> <strong>Dijkstra</strong><small>Camino de menor coste</small></label>
+          <label><input type="radio" name="rivals" value="greedy"> <strong>Greedy</strong><small>Valor inmediato máximo</small></label>
+          <label><input type="radio" name="rivals" value="a_star"> <strong>A*</strong><small>Búsqueda con heurística</small></label>
         </div></fieldset>
         <fieldset class="seg-field"><legend>¿Con señas? <small class="muted">(gestos al compañero, como guiñar un ojo = la 31)</small></legend><div class="seg">
           <label><input type="radio" name="signals" value="1" ${settings.signals !== false ? "checked" : ""}> 👀 Con señas</label>
