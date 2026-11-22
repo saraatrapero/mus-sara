@@ -1,0 +1,6 @@
+name = "compi"
+author = "Equipo CONECTA_CUATRO"
+version = "1.0"
+entrypoint = "bot:CompiBot"
+description = "Juega en pareja: suma lo que canta su compañero y se atreve más cuanto peor va el marcador."
+deterministic = true
