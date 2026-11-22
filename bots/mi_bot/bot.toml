@@ -1,0 +1,6 @@
+name = "mi_bot"
+author = "Daniela González y Marcos González"
+version = "1.0"
+entrypoint = "bot:MiBot"
+description = "Reglas sencillas sobre la probabilidad de ganar cada lance, estimada simulando repartos."
+deterministic = true
