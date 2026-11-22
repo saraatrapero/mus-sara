@@ -28,9 +28,9 @@ def test_torneo_sobrevive_a_un_bot_roto_y_genera_clasificacion(tmp_path):
     assert roto.wins == 0 and roto.errors == roto.games == 8
     assert sum(s.games for s in result.standings) == 2 * len(result.games)
     out = write_scoreboard(result, tmp_path)
-    data = json.loads((out / "scoreboard.json").read_text())
+    data = json.loads((out / "scoreboard.json").read_text(encoding="utf-8"))
     assert data["ranking"][0]["name"] in ("sencillo", "random")
-    assert (out / "index.html").read_text().startswith("<!doctype html>")
+    assert (out / "index.html").read_text(encoding="utf-8").startswith("<!doctype html>")
 
 
 def test_torneo_sobrevive_a_un_bot_cuya_fabrica_falla():
@@ -48,13 +48,15 @@ def test_torneo_sobrevive_a_un_bot_cuya_fabrica_falla():
     assert rota.wins == 0
 
 
-def test_el_experto_aparece_el_primero_en_el_ranking():
+def test_el_ranking_se_ordena_solo_por_elo():
+    # Ningún nombre tiene el primer puesto reservado (antes «experto» salía siempre primero).
     parts = [
-        Participant("experto", lambda: SimpleBot()),
+        Participant("experto", lambda: RandomBot(1)),
         Participant("sencillo", lambda: SimpleBot()),
     ]
-    result = run_tournament(parts, games_per_pair=1, seed=8)
-    assert result.ranking()[0].name == "experto"
+    result = run_tournament(parts, games_per_pair=4, seed=8)
+    elos = [s.elo for s in result.ranking()]
+    assert elos == sorted(elos, reverse=True)
 
 
 def test_torneo_reproducible():
@@ -95,7 +97,7 @@ def test_clasificacion_por_bradley_terry_con_cruces_y_markdown(tmp_path):
         ]
     )
     assert code == 0
-    data = json.loads((tmp_path / "c.json").read_text())
+    data = json.loads((tmp_path / "c.json").read_text(encoding="utf-8"))
     assert {r["name"] for r in data["ranking"]} == {"sencillo", "random"}
     assert data["head_to_head"][0]["games"] == 2
-    assert (tmp_path / "c.md").read_text().startswith("# Clasificación de bots")
+    assert (tmp_path / "c.md").read_text(encoding="utf-8").startswith("# Clasificación de bots")

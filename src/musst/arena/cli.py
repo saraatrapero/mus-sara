@@ -61,9 +61,11 @@ def main(argv: list[str] | None = None) -> int:
             f"en los dos sentidos (mus duplicado) · semilla {result.seed}. Elo de Bradley-Terry: "
             "media 1500; 200 puntos de diferencia ≈ 76 % de victorias.\n\n"
         )
-        Path(args.markdown).write_text(cabecera + to_markdown(result))
+        Path(args.markdown).write_text(cabecera + to_markdown(result), encoding="utf-8")
     if args.json:
-        Path(args.json).write_text(json.dumps(result.to_dict(), indent=2, ensure_ascii=False))
+        Path(args.json).write_text(
+            json.dumps(result.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8"
+        )
     print(to_markdown(result))
     print(f"Scoreboard escrito en {out}", file=sys.stderr)
     return 0

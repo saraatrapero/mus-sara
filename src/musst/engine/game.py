@@ -309,10 +309,14 @@ class MusGame:
             return f"Acción '{action.type}' no permitida en esta fase"
         if isinstance(action, BetAction | RaiseAction):
             assert spec.min_amount is not None and spec.max_amount is not None
+            if type(action.amount) is not int:
+                return "La cantidad tiene que ser un número entero"
             if not spec.min_amount <= action.amount <= spec.max_amount:
                 return f"Cantidad fuera de rango [{spec.min_amount}, {spec.max_amount}]"
         if isinstance(action, DiscardAction):
             cards = action.cards
+            if not isinstance(cards, list | tuple) or any(type(c) is not Card for c in cards):
+                return "El descarte tiene que ser una lista de cartas"
             if len(set(cards)) != len(cards):
                 return "Cartas repetidas en el descarte"
             if not self.config.min_discard <= len(cards) <= 4:
@@ -513,7 +517,7 @@ class MusGame:
             None,
             {
                 "lance": lance.value,
-                "participants": participants,
+                "participants": list(participants),
                 "betting": state.has_betting,
                 "lance_mano": participants[0] if participants else None,
             },

@@ -76,5 +76,15 @@ class GameEvent:
             "round": self.round_no,
             "phase": self.phase,
             "actor": self.actor,
-            "payload": self.payload,
+            # Copia: quien recibe el evento (un bot, la web) no puede modificar el del motor.
+            "payload": _copiar(self.payload),
         }
+
+
+def _copiar(valor: Any) -> Any:
+    """Copia diccionarios y listas anidados (los payloads solo llevan datos JSON)."""
+    if isinstance(valor, dict):
+        return {k: _copiar(v) for k, v in valor.items()}
+    if isinstance(valor, list | tuple):
+        return [_copiar(v) for v in valor]
+    return valor
