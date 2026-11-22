@@ -14,7 +14,7 @@ def client():
     return TestClient(create_app(Repository(":memory:"), dev_mode=False))
 
 
-@pytest.mark.parametrize("rival", ["experto", "dijkstra", "greedy", "a_star"])
+@pytest.mark.parametrize("rival", ["experto", "medio", "matematico"])
 def test_se_pueden_elegir_bots_nuevos(client, rival):
     response = client.post("/api/games", json={"rivals": rival, "partner": "sencillo", "seed": 4})
     assert response.status_code == 200

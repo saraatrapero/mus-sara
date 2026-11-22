@@ -494,9 +494,16 @@ function home() {
   api("/api/bots").then((bots) => {
     const options = document.getElementById("rival-options");
     if (!options) return;
-    options.innerHTML = bots.filter((bot) => bot.name !== "random" && !bot.alias).map((bot, index) =>
-      `<label><input type="radio" name="rivals" value="${esc(bot.name)}" ${index === 0 ? "checked" : ""}> <strong>${esc(bot.name)}</strong></label>`
-    ).join("");
+    // Nuestros bots de más fácil a más difícil (el servidor ya los da en ese orden) y, aparte,
+    // los que han mandado otros equipos.
+    const elegibles = bots.filter((bot) => bot.name !== "random" && !bot.alias);
+    const radio = (bot) => `<label><input type="radio" name="rivals" value="${esc(bot.name)}" ${bot.name === "medio" ? "checked" : ""}> <strong>${esc(bot.name)}</strong></label>`;
+    // «ejemplo» es el bot del tutorial (no es de otro equipo): no se ofrece como rival.
+    const propios = elegibles.filter((bot) => !bot.external);
+    const externos = elegibles.filter((bot) => bot.external && bot.name !== "ejemplo");
+    const titulo = (txt) => `<p class="muted" style="flex-basis:100%;margin:8px 0 2px">${txt}</p>`;
+    options.innerHTML = titulo("Nuestros bots, de más fácil a más difícil") + propios.map(radio).join("")
+      + (externos.length ? titulo("Bots de otros equipos") + externos.map(radio).join("") : "");
   }).catch(() => {});
   const syncPlayers = () => {
     const mode = document.querySelector('input[name="players"]:checked').value;
@@ -1538,9 +1545,18 @@ function learn() {
         <button class="btn" data-nav="training">Ver situaciones</button></div>
       <div class="panel stack"><span class="kicker">Entrenar</span><h2 class="card-title">Contra un bot</h2>
         <p class="muted">Elige un bot concreto y enfréntate a él tantas veces como quieras.</p>
-        <label class="field">Bot<select id="vs-bot"><option value="sencillo">Sencillo</option><option value="medio">Medio</option><option value="experto">Experto</option><option value="dijkstra">Dijkstra</option><option value="greedy">Greedy</option><option value="a_star">A*</option></select></label>
+        <label class="field">Bot<select id="vs-bot"><option value="sencillo">sencillo</option><option value="medio" selected>medio</option><option value="experto">experto</option></select></label>
         <button class="btn" id="vs-start">Jugar contra este bot</button></div>
     </div></div>`));
+  api("/api/bots").then((bots) => {
+    const sel = document.getElementById("vs-bot");
+    if (!sel) return;
+    const opt = (b) => `<option value="${esc(b.name)}" ${b.name === "medio" ? "selected" : ""}>${esc(b.name)}</option>`;
+    const elegibles = bots.filter((b) => b.name !== "random" && !b.alias);
+    const externos = elegibles.filter((b) => b.external && b.name !== "ejemplo");
+    sel.innerHTML = `<optgroup label="Nuestros bots (de más fácil a más difícil)">${elegibles.filter((b) => !b.external).map(opt).join("")}</optgroup>`
+      + (externos.length ? `<optgroup label="Bots de otros equipos">${externos.map(opt).join("")}</optgroup>` : "");
+  }).catch(() => {});
   document.getElementById("vs-start").onclick = () => startGame({ mode: "contra_bot", rivals: document.getElementById("vs-bot").value, partner: "sencillo" });
   document.getElementById("learn-play").onclick = () => startGame({ mode: "entrenamiento", rivals: "sencillo", partner: "sencillo" }, { help: true });
 }
