@@ -29,7 +29,7 @@ from musst.server.razones import explain_move
 
 log = logging.getLogger("musst.public.server")
 
-BOT_LEVELS = tuple(entry.name for entry in all_entries(sandboxed=True))
+BOT_LEVELS = tuple(entry.name for entry in all_entries())
 
 
 @dataclass
