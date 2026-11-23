@@ -24,7 +24,6 @@ import argparse
 import os
 import random
 from collections.abc import Sequence
-from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -101,6 +100,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--salida", default=str(RUTA))
     args = parser.parse_args(argv)
+    # Aquí y no arriba: en la web (Pyodide) no existe multiprocessing, y el bot solo necesita
+    # la tabla ya medida, no este comando que la regenera.
+    from concurrent.futures import ProcessPoolExecutor
+
     procesos = os.cpu_count() or 1
     trozos = procesos * 4
     tareas = [(args.partidas // trozos + (i < args.partidas % trozos), args.seed * 7919 + i)
