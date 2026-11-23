@@ -73,3 +73,25 @@ def test_inteligente_es_mas_fuerte_que_sencillo():
 
     victorias, _ = _partidas(inteligente, 12, seed0=200)
     assert victorias >= 7  # medido: ~80 % en 40 partidas duplicadas
+
+
+@necesita_numpy
+def test_inteligente_y_reglas_funcionan_sin_multiprocessing() -> None:
+    # En la web (Pyodide) no existe multiprocessing: importarlo al cargar el bot dejaba la
+    # partida contra «inteligente» o «reglas» sin empezar. Se simula en un proceso aparte.
+    import subprocess
+    import sys
+
+    codigo = (
+        "import sys; sys.modules['_multiprocessing'] = None; sys.modules['multiprocessing'] = None\n"
+        "from musst.bots.cunef import inteligente, reglas\n"
+        "from musst.engine.game import MusGame\n"
+        "from musst.engine.observation import build_observation\n"
+        "g = MusGame(seed=3)\n"
+        "for bot in (inteligente(), reglas()):\n"
+        "    bot.decide(build_observation(g, g.turn))\n"
+    )
+    resultado = subprocess.run(
+        [sys.executable, "-c", codigo], capture_output=True, text=True, timeout=120
+    )
+    assert resultado.returncode == 0, resultado.stderr[-2000:]
